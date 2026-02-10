@@ -10,7 +10,7 @@ import uuid
 from datetime import date
 from typing import TypedDict
 
-from sqlalchemy import Date, cast, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import MealEntry
@@ -87,7 +87,7 @@ async def weekly_stats(
     # Fetch sums grouped by local_date for the requested range.
     stmt = (
         select(
-            cast(MealEntry.local_date, Date).label("day"),
+            MealEntry.local_date.label("day"),
             func.coalesce(func.sum(MealEntry.calories_kcal), 0).label("calories_kcal"),
             func.coalesce(func.sum(MealEntry.protein_g), 0.0).label("protein_g"),
             func.coalesce(func.sum(MealEntry.carbs_g), 0.0).label("carbs_g"),

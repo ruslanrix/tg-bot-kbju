@@ -23,12 +23,15 @@ dependencies = [
 [dependency-groups]
 dev = [
   "pytest>=9,<10",
+  "pytest-asyncio>=1.0,<2.0",
+  "aiosqlite>=0.21,<1.0",
   "ruff>=0.9,<1.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 100
