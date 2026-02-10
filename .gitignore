@@ -1,0 +1,67 @@
+# ---- Secrets (never commit) ----
+.env
+.env.*
+!.env.example
+secrets.enc.json
+*.key
+*.pem
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
+pip-wheel-metadata/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pytype/
+.coverage
+htmlcov/
+.cache/
+
+# ---- Virtual envs ----
+.venv/
+venv/
+ENV/
+env/
+
+# ---- Jupyter / notebooks ----
+.ipynb_checkpoints/
+
+# ---- macOS ----
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ---- VS Code / Cursor ----
+.vscode/
+!.vscode/settings.json
+!.vscode/extensions.json
+.cursor/
+*.code-workspace
+
+# ---- Logs ----
+*.log
+
+# ---- FastAPI / Uvicorn ----
+*.pid
+
+# ---- Node (если вдруг рядом фронт) ----
+node_modules/
+
+# ---- Terraform / IaC (если появится) ----
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# ---- Misc ----
+tmp/
+
+newproj.sh
+pyproject.fastapi.toml
+pyproject.tgbot.toml
