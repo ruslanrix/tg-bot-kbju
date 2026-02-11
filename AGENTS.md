@@ -42,6 +42,7 @@ alembic/                DB migrations
 - **Local dev (polling):** `make dev` — no PUBLIC_URL needed, no ngrok
 - **Production (webhook):** `make serve` or `docker compose up` — set PUBLIC_URL + WEBHOOK_SECRET
 - **Docker:** `docker compose up --build` — PostgreSQL + app, migrations auto-run
+- **Railway:** deploy via `railway.toml` (Dockerfile builder); set `DATABASE_URL` with `postgresql+asyncpg://` scheme using Railway reference variables
 - **Tests:** `poetry run pytest -v` or `make test`
 - **Lint:** `poetry run ruff check .` or `make lint`
 - **Format:** `poetry run ruff format .` or `make fmt`

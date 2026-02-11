@@ -30,7 +30,7 @@ app/
     middlewares.py
     factory.py
   web/           FastAPI app (webhook + health)
-tests/           pytest (97 tests)
+tests/           pytest (112 tests)
 alembic/         DB migrations
 ```
 
@@ -88,7 +88,39 @@ docker compose up --build
 
 This starts PostgreSQL and the bot app together. Migrations run automatically.
 
-### 6. Health check
+### 6. Railway Deploy
+
+1. Create a project at [railway.app](https://railway.app).
+2. Add the **PostgreSQL** plugin — Railway provisions the database automatically.
+3. Connect your GitHub repository (branch `main`).
+4. Open **Variables** in the service settings and add:
+
+| Variable | Value |
+|---|---|
+| `BOT_TOKEN` | Token from [@BotFather](https://t.me/BotFather) |
+| `OPENAI_API_KEY` | Your OpenAI API key |
+| `DATABASE_URL` | `postgresql+asyncpg://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/${{Postgres.PGDATABASE}}` |
+| `PUBLIC_URL` | Your Railway domain, e.g. `https://my-app.up.railway.app` |
+| `WEBHOOK_SECRET` | Random string (min 8 chars): `openssl rand -hex 16` |
+
+> **Note:** Railway's built-in `DATABASE_URL` uses the `postgresql://` scheme, but
+> asyncpg requires `postgresql+asyncpg://`. The reference-variable formula above
+> builds the correct URL automatically.
+
+5. Generate a public domain: **Settings → Networking → Generate Domain**.
+   Copy the `https://xxx.up.railway.app` URL into `PUBLIC_URL`.
+6. Deploy triggers automatically on push to `main`.
+7. Verify:
+
+```bash
+curl https://xxx.up.railway.app/health   # {"status":"ok"}
+```
+
+Then send a message to the bot in Telegram — it should respond.
+
+Database migrations run automatically on every deploy.
+
+### 7. Health check
 
 ```bash
 make health
