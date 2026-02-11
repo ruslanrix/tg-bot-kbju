@@ -1,0 +1,16 @@
+.venv
+.git
+.gitignore
+__pycache__
+*.pyc
+.env
+.env.*
+!.env.example
+tests/
+.pytest_cache
+.ruff_cache
+.mypy_cache
+*.md
+!README.md
+docker-compose.yml
+Makefile
