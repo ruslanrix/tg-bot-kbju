@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -63,6 +63,13 @@ class Settings(BaseSettings):
         if len(v) < 8:
             raise ValueError("WEBHOOK_SECRET must be at least 8 characters")
         return v
+
+    @model_validator(mode="after")
+    def _validate_webhook_pair(self) -> Settings:
+        """Require WEBHOOK_SECRET when PUBLIC_URL is set (webhook mode)."""
+        if self.PUBLIC_URL and not self.WEBHOOK_SECRET:
+            raise ValueError("WEBHOOK_SECRET is required when PUBLIC_URL is set")
+        return self
 
     @field_validator("OPENAI_TIMEOUT_SECONDS", "MAX_PHOTO_BYTES", "RATE_LIMIT_PER_MINUTE", "PORT")
     @classmethod

@@ -103,6 +103,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         polling_task = asyncio.create_task(
             _dp.start_polling(_bot, handle_signals=False),
         )
+        # Give polling a moment to fail on invalid token / network errors
+        await asyncio.sleep(1)
+        if polling_task.done():
+            polling_task.result()  # raises stored exception
         logger.info(
             "Polling mode started (no PUBLIC_URL set)",
             extra={"event": "polling_started"},
