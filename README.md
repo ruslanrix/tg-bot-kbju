@@ -56,34 +56,39 @@ Copy `.env.example` to `.env` and fill in the values:
 cp .env.example .env
 ```
 
-Required variables: `BOT_TOKEN`, `DATABASE_URL`, `OPENAI_API_KEY`,
-`PUBLIC_URL`, `WEBHOOK_SECRET`.
+Required variables: `BOT_TOKEN`, `DATABASE_URL`, `OPENAI_API_KEY`.
 
-### 4. Database
+Optional (for webhook/production): `PUBLIC_URL`, `WEBHOOK_SECRET`.
+Leave `PUBLIC_URL` empty for local dev (polling mode, no ngrok needed).
+
+### 4. Run
+
+The app supports two modes:
+
+**Polling mode (local dev)** — `PUBLIC_URL` not set, bot fetches updates itself:
 
 ```bash
-poetry run alembic upgrade head
+make dev
 ```
 
-### 5. Run
+**Webhook mode (production)** — set `PUBLIC_URL` and `WEBHOOK_SECRET`:
 
 ```bash
-# FastAPI webhook mode (local dev)
-make dev
-
-# or production
 make serve
 ```
 
-### 6. Docker
+Database migrations run automatically on startup.
+To run manually: `poetry run alembic upgrade head`.
+
+### 5. Docker
 
 ```bash
 docker compose up --build
 ```
 
-This starts PostgreSQL and the bot app together.
+This starts PostgreSQL and the bot app together. Migrations run automatically.
 
-### 7. Health check
+### 6. Health check
 
 ```bash
 make health

@@ -24,8 +24,10 @@ class Settings(BaseSettings):
     BOT_TOKEN: str
     DATABASE_URL: str
     OPENAI_API_KEY: str
-    PUBLIC_URL: str
-    WEBHOOK_SECRET: str
+
+    # --- Webhook mode (optional — leave empty for polling/local dev) ----
+    PUBLIC_URL: str = ""
+    WEBHOOK_SECRET: str = ""
 
     # --- Optional (with defaults) ----------------------------------------
     OPENAI_MODEL: str = "gpt-4o-mini"
@@ -37,9 +39,16 @@ class Settings(BaseSettings):
     PORT: int = 8000
 
     # --- Validators ------------------------------------------------------
+    @property
+    def use_webhook(self) -> bool:
+        """True when PUBLIC_URL is configured (webhook mode)."""
+        return bool(self.PUBLIC_URL)
+
     @field_validator("PUBLIC_URL")
     @classmethod
     def _validate_public_url(cls, v: str) -> str:
+        if not v:  # empty = polling mode
+            return v
         if not v.startswith("https://"):
             raise ValueError("PUBLIC_URL must start with https://")
         if v.endswith("/"):
@@ -49,6 +58,8 @@ class Settings(BaseSettings):
     @field_validator("WEBHOOK_SECRET")
     @classmethod
     def _validate_webhook_secret(cls, v: str) -> str:
+        if not v:  # empty = polling mode, no secret needed
+            return v
         if len(v) < 8:
             raise ValueError("WEBHOOK_SECRET must be at least 8 characters")
         return v

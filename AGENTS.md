@@ -28,7 +28,7 @@ app/
   bot/formatters.py     Message templates
   bot/middlewares.py    DB session + logging context middleware
   bot/factory.py        Bot + dispatcher wiring
-  web/main.py           FastAPI webhook app
+  web/main.py           FastAPI app (webhook + polling modes)
 tests/                  pytest (aiosqlite, no external deps)
 alembic/                DB migrations
 ```
@@ -39,12 +39,14 @@ alembic/                DB migrations
 - Install: `poetry install`
 
 ## Common commands
-- **Dev server:** `make dev` (uvicorn with reload)
-- **Production:** `make serve` or `docker compose up`
+- **Local dev (polling):** `make dev` — no PUBLIC_URL needed, no ngrok
+- **Production (webhook):** `make serve` or `docker compose up` — set PUBLIC_URL + WEBHOOK_SECRET
+- **Docker:** `docker compose up --build` — PostgreSQL + app, migrations auto-run
 - **Tests:** `poetry run pytest -v` or `make test`
 - **Lint:** `poetry run ruff check .` or `make lint`
 - **Format:** `poetry run ruff format .` or `make fmt`
 - **Health:** `curl http://127.0.0.1:8000/health`
+- **Migrations:** auto on startup; manual: `poetry run alembic upgrade head`
 
 ## Key patterns
 - **Async everywhere:** SQLAlchemy async sessions, aiogram async handlers.
@@ -55,6 +57,8 @@ alembic/                DB migrations
 - **Photo size selection:** Iterate from largest to smallest PhotoSize, pick first ≤ `MAX_PHOTO_BYTES`.
 - **Middleware order:** DBSessionMiddleware (outer) → LoggingMiddleware (outer) → handlers.
 - **Router order:** Command routers first, meal router last (catch-all text/photo).
+- **Two run modes:** `PUBLIC_URL` set → webhook; empty → polling (local dev). Auto-detected in lifespan.
+- **Auto-migrations:** `alembic upgrade head` runs via subprocess on every startup.
 
 ## Secrets rules (critical)
 - NEVER commit `.env`, `.venv/`, `__pycache__/`, keys, tokens, credentials.
