@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,8 +24,10 @@ class Settings(BaseSettings):
     BOT_TOKEN: str
     DATABASE_URL: str
     OPENAI_API_KEY: str
-    PUBLIC_URL: str
-    WEBHOOK_SECRET: str
+
+    # --- Webhook mode (optional — leave empty for polling/local dev) ----
+    PUBLIC_URL: str = ""
+    WEBHOOK_SECRET: str = ""
 
     # --- Optional (with defaults) ----------------------------------------
     OPENAI_MODEL: str = "gpt-4o-mini"
@@ -37,9 +39,16 @@ class Settings(BaseSettings):
     PORT: int = 8000
 
     # --- Validators ------------------------------------------------------
+    @property
+    def use_webhook(self) -> bool:
+        """True when PUBLIC_URL is configured (webhook mode)."""
+        return bool(self.PUBLIC_URL)
+
     @field_validator("PUBLIC_URL")
     @classmethod
     def _validate_public_url(cls, v: str) -> str:
+        if not v:  # empty = polling mode
+            return v
         if not v.startswith("https://"):
             raise ValueError("PUBLIC_URL must start with https://")
         if v.endswith("/"):
@@ -49,9 +58,18 @@ class Settings(BaseSettings):
     @field_validator("WEBHOOK_SECRET")
     @classmethod
     def _validate_webhook_secret(cls, v: str) -> str:
+        if not v:  # empty = polling mode, no secret needed
+            return v
         if len(v) < 8:
             raise ValueError("WEBHOOK_SECRET must be at least 8 characters")
         return v
+
+    @model_validator(mode="after")
+    def _validate_webhook_pair(self) -> Settings:
+        """Require WEBHOOK_SECRET when PUBLIC_URL is set (webhook mode)."""
+        if self.PUBLIC_URL and not self.WEBHOOK_SECRET:
+            raise ValueError("WEBHOOK_SECRET is required when PUBLIC_URL is set")
+        return self
 
     @field_validator("OPENAI_TIMEOUT_SECONDS", "MAX_PHOTO_BYTES", "RATE_LIMIT_PER_MINUTE", "PORT")
     @classmethod
