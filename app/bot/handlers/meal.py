@@ -59,6 +59,7 @@ class DraftData:
 
     analysis: NutritionAnalysis
     source: str  # "text" or "photo"
+    draft_id: str = ""
     original_text: str | None = None
     photo_file_id: str | None = None
     tg_chat_id: int = 0
@@ -120,13 +121,18 @@ async def handle_photo(message: Message, session: AsyncSession, bot: Bot) -> Non
     if message.from_user is None:
         return
 
-    # §5.6 — photo size guard
-    photo = message.photo[-1]  # largest variant
-    if photo.file_size and photo.file_size > max_photo_bytes:
-        result = check_photo_size(photo.file_size, max_photo_bytes)
-        if not result.passed:
-            await message.reply(result.reject_message or "")
-            return
+    # §5.6 — photo size guard: prefer largest variant that fits the limit.
+    # Telegram provides multiple sizes; iterate from largest to smallest.
+    photo = None
+    for candidate in reversed(message.photo):
+        if candidate.file_size is None or candidate.file_size <= max_photo_bytes:
+            photo = candidate
+            break
+    if photo is None:
+        # All variants exceed the limit.
+        result = check_photo_size(message.photo[-1].file_size or 0, max_photo_bytes)
+        await message.reply(result.reject_message or "")
+        return
 
     # Text precheck on caption (if any)
     caption = message.caption or ""
@@ -233,13 +239,15 @@ async def handle_unsupported(message: Message) -> None:
 @router.callback_query(F.data.startswith("draft_save:"))
 async def on_draft_save(callback: CallbackQuery, session: AsyncSession) -> None:
     """Save a draft meal to the database."""
-    if callback.from_user is None:
+    if callback.from_user is None or callback.data is None:
         return
     uid = callback.from_user.id
-    draft = draft_store.pop(uid, None)
-    if draft is None:
+    cb_draft_id = callback.data.split(":", 1)[1]
+    draft = draft_store.get(uid)
+    if draft is None or draft.draft_id != cb_draft_id:
         await callback.answer("Draft expired.", show_alert=True)
         return
+    draft_store.pop(uid, None)
 
     user = await UserRepo.get_or_create(session, uid)
     tz = user_timezone(user.tz_mode, user.tz_name, user.tz_offset_minutes)
@@ -313,11 +321,12 @@ async def on_draft_save(callback: CallbackQuery, session: AsyncSession) -> None:
 @router.callback_query(F.data.startswith("draft_edit:"))
 async def on_draft_edit(callback: CallbackQuery, state: FSMContext) -> None:
     """Trigger edit flow for a draft — ask for corrected text."""
-    if callback.from_user is None:
+    if callback.from_user is None or callback.data is None:
         return
     uid = callback.from_user.id
+    cb_draft_id = callback.data.split(":", 1)[1]
     draft = draft_store.get(uid)
-    if draft is None:
+    if draft is None or draft.draft_id != cb_draft_id:
         await callback.answer("Draft expired.", show_alert=True)
         return
 
@@ -332,9 +341,15 @@ async def on_draft_edit(callback: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(F.data.startswith("draft_delete:"))
 async def on_draft_delete(callback: CallbackQuery) -> None:
     """Delete a draft — remove from memory."""
-    if callback.from_user is None:
+    if callback.from_user is None or callback.data is None:
         return
-    draft_store.pop(callback.from_user.id, None)
+    uid = callback.from_user.id
+    cb_draft_id = callback.data.split(":", 1)[1]
+    draft = draft_store.get(uid)
+    if draft is not None and draft.draft_id != cb_draft_id:
+        await callback.answer("Draft expired.", show_alert=True)
+        return
+    draft_store.pop(uid, None)
     await callback.message.edit_text("🗑️ Deleted.")  # type: ignore[union-attr]
     await callback.answer()
 
@@ -511,6 +526,7 @@ async def _handle_analysis_result(
     draft_store[uid] = DraftData(
         analysis=analysis,
         source=source,
+        draft_id=draft_id,
         original_text=original_text,
         photo_file_id=photo_file_id,
         tg_chat_id=message.chat.id,
