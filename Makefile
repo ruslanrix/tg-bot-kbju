@@ -1,7 +1,7 @@
 # Makefile — universal helper for Poetry-based Python projects
 
 # ---- Config (edit per project) ----
-APP_MODULE ?= app.main:app        # FastAPI module: "package.module:app"
+APP_MODULE ?= app.web.main:app     # FastAPI module: "package.module:app"
 PY_ENTRY   ?= app.py              # Script entrypoint for bots/CLI apps
 PORT       ?= 8000
 HOST       ?= 127.0.0.1

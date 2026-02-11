@@ -1,85 +1,129 @@
-# Project Name
+# tg-bot-kbju
 
-Short description.
+Telegram bot for tracking meals and calories/macros (KBJU). Send a text
+description or a photo of your meal and the bot uses OpenAI to estimate
+calories, protein, carbs, and fat. View daily/weekly/monthly stats, set
+personal goals, and manage timezone.
 
 ## Stack
-- Python
-- Poetry
-- (FastAPI / Aiogram / etc.)
+
+- Python 3.12, Poetry 2.x
+- **aiogram 3** (Telegram Bot API)
+- **FastAPI** (webhook receiver)
+- **SQLAlchemy 2** (async) + **Alembic** (migrations)
+- **PostgreSQL** (production) / SQLite (tests)
+- **OpenAI API** (GPT-4o-mini vision + text)
+- Docker & docker-compose
+
+## Project layout
+
+```
+app/
+  core/          config, logging
+  db/            models, repos, engine
+  services/      nutrition_ai, precheck, rate_limit
+  reports/       stats aggregation
+  bot/
+    handlers/    start, meal, goals, stats, history, timezone, stubs
+    keyboards.py
+    formatters.py
+    middlewares.py
+    factory.py
+  web/           FastAPI app (webhook + health)
+tests/           pytest (97 tests)
+alembic/         DB migrations
+```
 
 ## Quickstart
 
-### 1) Requirements
-- Python via pyenv (recommended)
+### 1. Requirements
+
+- Python 3.12 (pyenv recommended)
 - Poetry installed
-- Git
+- PostgreSQL (or use docker-compose)
 
-### 2) Install
-    poetry install
+### 2. Install
 
-### 3) Configure
-Create `.env` (never commit it). Example:
+```bash
+poetry install
+```
 
-    # Required
-    TELEGRAM_BOT_TOKEN=your_token
-    OPENAI_API_KEY=your_key
+### 3. Configure
 
-    # Optional defaults
-    OPENAI_MODEL=gpt-4o-mini
-    OPENAI_TEMPERATURE=0.6
-    OPENAI_MAX_OUTPUT_TOKENS=350
-    OPENAI_TIMEOUT_SECONDS=30
+Copy `.env.example` to `.env` and fill in the values:
 
-    # Webhook mode (if used)
-    PUBLIC_URL=https://your-app.up.railway.app
-    WEBHOOK_SECRET=your_webhook_secret
+```bash
+cp .env.example .env
+```
 
-### 4) Run
+Required variables: `BOT_TOKEN`, `DATABASE_URL`, `OPENAI_API_KEY`,
+`PUBLIC_URL`, `WEBHOOK_SECRET`.
 
-#### Bot (script entry)
-    make start
-    # or
-    poetry run python app.py
+### 4. Database
 
-#### FastAPI (local dev)
-    make dev
-    # or
-    poetry run uvicorn app.main:app --reload --port 8000
+```bash
+poetry run alembic upgrade head
+```
 
-### 5) Health check (if applicable)
-    make health
-    # or
-    curl -s http://127.0.0.1:8000/health && echo
+### 5. Run
+
+```bash
+# FastAPI webhook mode (local dev)
+make dev
+
+# or production
+make serve
+```
+
+### 6. Docker
+
+```bash
+docker compose up --build
+```
+
+This starts PostgreSQL and the bot app together.
+
+### 7. Health check
+
+```bash
+make health
+# or
+curl -s http://127.0.0.1:8000/health
+```
 
 ## Tests
-    make test
-    # or
-    poetry run pytest -q
 
-## Lint / Format (optional)
-    make lint
-    make fmt
+```bash
+make test
+# or
+poetry run pytest -v
+```
 
-## Deployment (Railway notes)
+Tests use in-memory SQLite (no PostgreSQL needed).
 
-### Poetry install in build
-If build fails with "current project could not be installed", use:
-    poetry install --no-interaction --no-ansi --no-root
+## Lint / Format
 
-### Telegram Webhook mode (if used)
-- Endpoint: POST /webhook
-- Secret: header X-Telegram-Bot-Api-Secret-Token
-- App sets webhook automatically on startup if PUBLIC_URL is set.
+```bash
+make fmt    # ruff format
+make lint   # ruff check
+```
 
-Telegram debug:
-    curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo"
+## Bot commands
+
+| Command         | Description                     |
+| --------------- | ------------------------------- |
+| `/start`        | Register and show main keyboard |
+| `/help`         | Usage instructions              |
+| `/goals`        | Set daily calorie goal          |
+| `/timezone`     | Change timezone (city or UTC)   |
+| `/stats`        | Today / weekly / 4-week stats   |
+| `/history`      | Last 20 meals with delete       |
+| `/feedback`     | Stub (coming soon)              |
+| `/subscription` | Stub (coming soon)              |
+
+Send any **text** or **photo** of food to log a meal.
 
 ## Repo hygiene
+
 - Do not commit `.env`, `.venv/`, `__pycache__/`, tokens/keys.
 - Keep `.env.example` with placeholders only.
-
-## Canonical learning plan
-- See: MODULES.md (source of truth)
-- Rule: done modules never renamed; new topics appended as new letters.
-- Goal: vibecoding with agents (Codex/Claude) safely via PR + small diffs.
-
