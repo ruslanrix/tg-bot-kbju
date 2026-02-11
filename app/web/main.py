@@ -46,8 +46,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     _dp = create_dispatcher(settings)
 
     webhook_url = f"{settings.PUBLIC_URL}/webhook/{settings.WEBHOOK_SECRET}"
-    await _bot.set_webhook(webhook_url, drop_pending_updates=True)
-    logger.info("Webhook set to %s", webhook_url, extra={"event": "webhook_set"})
+    await _bot.set_webhook(webhook_url)
+    logger.info("Webhook set", extra={"event": "webhook_set", "public_url": settings.PUBLIC_URL})
 
     yield
 
