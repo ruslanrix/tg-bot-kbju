@@ -11,53 +11,62 @@
 - If uncertain, propose 2 options with trade-offs, then wait.
 
 ## Project layout
-- Source: `app/` or project root (see repo structure).
-- Tests: `tests/`
-- Config/secrets: ENV + optional encrypted secrets file.
+
+```
+app/
+  core/config.py        Pydantic Settings (env vars)
+  core/logging.py       JSON structured logging
+  db/models.py          SQLAlchemy 2 models (User, MealEntry)
+  db/repos.py           UserRepo, MealRepo (async)
+  db/engine.py          Engine + session factory
+  services/nutrition_ai.py  OpenAI structured output (text + vision)
+  services/precheck.py  Pre-API filtering (water, medicine, vague text)
+  services/rate_limit.py    Per-user rate limiter + concurrency guard
+  reports/stats.py      Stats aggregation (today, weekly, 4-week)
+  bot/handlers/         Aiogram routers (start, meal, goals, stats, etc.)
+  bot/keyboards.py      Reply + inline keyboard builders
+  bot/formatters.py     Message templates
+  bot/middlewares.py    DB session + logging context middleware
+  bot/factory.py        Bot + dispatcher wiring
+  web/main.py           FastAPI webhook app
+tests/                  pytest (aiosqlite, no external deps)
+alembic/                DB migrations
+```
 
 ## Setup (Python)
-- Dependency manager: Poetry.
+- Python 3.12, Poetry 2.x
 - Virtualenv should be in-project: `.venv/`
-- Install:
-  - `poetry install --no-interaction --no-ansi` (local)
-  - On Railway-like builds, prefer: `poetry install --no-interaction --no-ansi --no-root`
+- Install: `poetry install`
 
 ## Common commands
-- Run locally:
-  - `make start` (preferred) OR `poetry run python app.py`
-- Run FastAPI:
-  - `poetry run uvicorn webhook_app:app --reload --port 8000`
-- Tests:
-  - `poetry run pytest -q`
+- **Dev server:** `make dev` (uvicorn with reload)
+- **Production:** `make serve` or `docker compose up`
+- **Tests:** `poetry run pytest -v` or `make test`
+- **Lint:** `poetry run ruff check .` or `make lint`
+- **Format:** `poetry run ruff format .` or `make fmt`
+- **Health:** `curl http://127.0.0.1:8000/health`
+
+## Key patterns
+- **Async everywhere:** SQLAlchemy async sessions, aiogram async handlers.
+- **Soft delete:** `MealEntry.is_deleted` + `deleted_at`. All queries filter `is_deleted=False`.
+- **Draft flow:** User sends text/photo → AI analysis → draft preview → Save/Edit/Delete buttons.
+- **Draft token:** Each draft has a `draft_id`; callbacks validate it to prevent stale button actions.
+- **One draft per user:** `draft_store: dict[int, DraftData]` keyed by `tg_user_id`.
+- **Photo size selection:** Iterate from largest to smallest PhotoSize, pick first ≤ `MAX_PHOTO_BYTES`.
+- **Middleware order:** DBSessionMiddleware (outer) → LoggingMiddleware (outer) → handlers.
+- **Router order:** Command routers first, meal router last (catch-all text/photo).
 
 ## Secrets rules (critical)
 - NEVER commit `.env`, `.venv/`, `__pycache__/`, keys, tokens, credentials.
 - Use `.env.example` with placeholders only.
-- Runtime secrets come from:
-  - Local: `.env` (not committed)
-  - Production: platform Variables (Railway, etc.)
-- If encrypted secrets exist, keep encryption tooling unchanged unless asked.
+- Runtime secrets: `.env` locally, platform env vars in production.
 
 ## Pitfalls (avoid)
-- Do not create/rename local modules that shadow Python stdlib modules
-  (e.g., secrets.py, json.py, typing.py, email.py, asyncio.py, dataclasses.py).
-  If a name conflict exists, rename the local file/package (e.g., secrets_store.py).
-
-## Telegram bot specific
-- Polling mode: only one instance can run at a time.
-- Webhook mode:
-  - Endpoint: `/webhook`
-  - Validate header: `X-Telegram-Bot-Api-Secret-Token`
-  - Health check: `/health`
-  - Auto webhook registration on startup if `PUBLIC_URL` is set.
+- Do not create/rename local modules that shadow Python stdlib modules.
+- SQLite tests: JSONB not supported — conftest.py patches it to JSON.
+- `cast(column, Date)` breaks on SQLite — use `.label()` directly.
 
 ## Change policy
 - One commit = one logical change.
 - Keep PRs small: prefer multiple small commits over one huge.
-- When changing config/loading behavior: do not break priority order or defaults.
-
-## Output requirements
-- When asked to implement something: return
-  1) `git diff` / unified diff
-  2) short explanation of what changed
-  3) next command(s) to run (only if user asked)
+- Always run `ruff format . && ruff check . && pytest` before committing.
