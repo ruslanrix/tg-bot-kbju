@@ -79,22 +79,27 @@ def last_7_days(today: _dt.date) -> list[_dt.date]:
 
 
 def last_28_days_weeks(today: _dt.date) -> list[tuple[_dt.date, _dt.date]]:
-    """Split the last 28 days into 4 Mon–Sun week ranges.
+    """Split the last 28 days into Mon–Sun week ranges.
 
-    The most recent week contains *today*; weeks go backwards.
-    Each week is exactly Mon–Sun (7 days).  The 28-day window is
-    computed as ``[today - 27 … today]``, then grouped by ISO week.
+    Guarantees that the window ``[today - 27 … today]`` (28 days)
+    is fully covered by Mon–Sun weeks.  The newest week always
+    contains *today*; the oldest week's Monday is on or before
+    ``today - 27``.  This yields 4 or 5 weeks depending on which
+    weekday *today* falls on (exactly 4 when today is Sunday).
 
     Returns:
-        A list of 4 ``(monday, sunday)`` tuples, newest first.
+        A list of ``(monday, sunday)`` tuples, newest first.
     """
-    # Find the Monday of the week containing `today`.
-    current_monday = today - _dt.timedelta(days=today.weekday())
+    # Ensure the full 28-day window is covered.
+    start = today - _dt.timedelta(days=27)  # 28 days including today
+    oldest_monday = start - _dt.timedelta(days=start.weekday())
+    newest_monday = today - _dt.timedelta(days=today.weekday())
 
     weeks: list[tuple[_dt.date, _dt.date]] = []
-    for i in range(4):
-        mon = current_monday - _dt.timedelta(weeks=i)
+    mon = newest_monday
+    while mon >= oldest_monday:
         sun = mon + _dt.timedelta(days=6)
         weeks.append((mon, sun))
+        mon -= _dt.timedelta(weeks=1)
 
     return weeks  # newest week first

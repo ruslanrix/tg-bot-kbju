@@ -209,3 +209,44 @@ class TestNutritionAnalysisModel:
     def test_invalid_action_rejected(self):
         with pytest.raises(Exception):
             NutritionAnalysis(action="invalid_action")
+
+    def test_negative_calories_rejected(self):
+        with pytest.raises(Exception):
+            NutritionAnalysis(action="save", calories_kcal=-100)
+
+    def test_negative_protein_rejected(self):
+        with pytest.raises(Exception):
+            NutritionAnalysis(action="save", protein_g=-5.0)
+
+    def test_negative_fat_rejected(self):
+        with pytest.raises(Exception):
+            NutritionAnalysis(action="save", fat_g=-1.0)
+
+    def test_negative_carbs_rejected(self):
+        with pytest.raises(Exception):
+            NutritionAnalysis(action="save", carbs_g=-10.0)
+
+    def test_negative_ingredient_calories_rejected(self):
+        with pytest.raises(Exception):
+            Ingredient(name="test", amount="100g", calories_kcal=-50)
+
+    def test_confidence_out_of_range_rejected(self):
+        with pytest.raises(Exception):
+            NutritionAnalysis(action="save", confidence=1.5)
+
+    def test_none_values_still_valid(self):
+        """None values should still be accepted (for reject actions)."""
+        m = NutritionAnalysis(action="reject_not_food")
+        assert m.calories_kcal is None
+        assert m.protein_g is None
+
+    def test_zero_values_valid(self):
+        """Zero is a valid non-negative value."""
+        m = NutritionAnalysis(
+            action="save",
+            calories_kcal=0,
+            protein_g=0.0,
+            carbs_g=0.0,
+            fat_g=0.0,
+        )
+        assert m.calories_kcal == 0

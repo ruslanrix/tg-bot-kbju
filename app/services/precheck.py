@@ -53,8 +53,15 @@ _MEDICINE_KEYWORDS: set[str] = {"лекарство", "таблетка", "ibupr
 
 _VAGUE_WORDS: set[str] = {"вкусняшка", "еда", "поел", "ням", "что-то"}
 
-# Regex: at least one letter or digit (not purely emoji/punctuation/whitespace).
-_HAS_ALNUM = re.compile(r"[a-zA-Zа-яА-ЯёЁ0-9]")
+
+def _has_alnum(text: str) -> bool:
+    """Return True if *text* contains at least one Unicode letter or digit.
+
+    Uses ``str.isalnum()`` which covers all scripts (Latin, Cyrillic,
+    CJK, Arabic, etc.), unlike a Latin/Cyrillic-only regex.
+    """
+    return any(c.isalnum() for c in text)
+
 
 # Regex: contains any digit.
 _HAS_DIGIT = re.compile(r"\d")
@@ -85,7 +92,7 @@ def check_text(text: str, *, has_photo: bool) -> PrecheckResult:
     normalized = text.strip().lower()
 
     # §5.2 — empty / junk (only emoji/punctuation).
-    if not normalized or not _HAS_ALNUM.search(normalized):
+    if not normalized or not _has_alnum(normalized):
         return PrecheckResult(passed=False, reject_message=MSG_NOT_TEXT_OR_PHOTO)
 
     # §5.3 — water-only exact match.

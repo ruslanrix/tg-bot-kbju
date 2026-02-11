@@ -61,6 +61,27 @@ class TestEmptyJunk:
         r = check_text("!!!???...", has_photo=False)
         assert not r.passed
 
+    def test_chinese_food_passes(self):
+        """Chinese food name should not be rejected as junk."""
+        r = check_text("饺子", has_photo=False)
+        assert r.passed
+
+    def test_japanese_food_passes(self):
+        r = check_text("ラーメン", has_photo=False)
+        assert r.passed
+
+    def test_arabic_food_passes(self):
+        r = check_text("فلافل", has_photo=False)
+        assert r.passed
+
+    def test_korean_food_passes(self):
+        r = check_text("김치", has_photo=False)
+        assert r.passed
+
+    def test_thai_food_passes(self):
+        r = check_text("ผัดไทย", has_photo=False)
+        assert r.passed
+
 
 # ---------------------------------------------------------------------------
 # §5.3 — water-only

@@ -131,8 +131,15 @@ class TestLast7Days:
 # last_28_days_weeks
 # ---------------------------------------------------------------------------
 class TestLast28DaysWeeks:
-    def test_returns_4_weeks(self):
+    def test_returns_5_weeks_on_wednesday(self):
+        """Mid-week days need 5 Mon-Sun weeks to cover full 28-day window."""
         today = _dt.date(2024, 6, 19)  # Wednesday
+        weeks = last_28_days_weeks(today)
+        assert len(weeks) == 5
+
+    def test_returns_4_weeks_on_sunday(self):
+        """On Sunday, 28 days align exactly with 4 Mon-Sun weeks."""
+        today = _dt.date(2024, 6, 23)  # Sunday
         weeks = last_28_days_weeks(today)
         assert len(weeks) == 4
 
@@ -157,3 +164,12 @@ class TestLast28DaysWeeks:
             current_mon, _ = weeks[i]
             prev_mon, _ = weeks[i + 1]
             assert (current_mon - prev_mon).days == 7
+
+    def test_covers_full_28_day_window(self):
+        """The union of all weeks must cover [today-27, today]."""
+        today = _dt.date(2024, 6, 19)
+        weeks = last_28_days_weeks(today)
+        oldest_start = weeks[-1][0]
+        newest_end = weeks[0][1]
+        assert oldest_start <= today - _dt.timedelta(days=27)
+        assert newest_end >= today
