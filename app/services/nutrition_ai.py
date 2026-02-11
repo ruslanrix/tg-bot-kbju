@@ -35,7 +35,7 @@ class Ingredient(BaseModel):
 
     name: str
     amount: str
-    calories_kcal: int
+    calories_kcal: int = Field(ge=0)
 
 
 class NutritionAnalysis(BaseModel):
@@ -44,20 +44,23 @@ class NutritionAnalysis(BaseModel):
     When ``action`` is ``"save"`` all nutrition fields are populated.
     For ``reject_*`` actions only ``user_message`` matters (except
     ``reject_unrecognized`` where the bot uses a fixed reply).
+
+    All numeric nutrition fields enforce ``>= 0`` to prevent invalid
+    data from reaching the database (e.g. on OpenAI model drift).
     """
 
     action: ActionType
     meal_name: str | None = None
-    calories_kcal: int | None = None
-    protein_g: float | None = None
-    carbs_g: float | None = None
-    fat_g: float | None = None
-    weight_g: int | None = None
-    volume_ml: int | None = None
-    caffeine_mg: int | None = None
+    calories_kcal: int | None = Field(default=None, ge=0)
+    protein_g: float | None = Field(default=None, ge=0)
+    carbs_g: float | None = Field(default=None, ge=0)
+    fat_g: float | None = Field(default=None, ge=0)
+    weight_g: int | None = Field(default=None, ge=0)
+    volume_ml: int | None = Field(default=None, ge=0)
+    caffeine_mg: int | None = Field(default=None, ge=0)
     likely_ingredients: list[Ingredient] = Field(default_factory=list)
     user_message: str | None = None
-    confidence: float = 0.0
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
 # ---------------------------------------------------------------------------

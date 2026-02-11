@@ -100,7 +100,7 @@ class TestFourWeekStats:
         weeks = last_28_days_weeks(today)
 
         result = await four_week_stats(session, test_user.id, weeks)
-        assert len(result) == 4
+        assert len(result) == len(weeks)
         # All zeros since no meals
         for week in result:
             assert week["avg_calories_kcal"] == 0.0
