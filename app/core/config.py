@@ -52,8 +52,8 @@ class Settings(BaseSettings):
     REMINDER_INACTIVITY_HOURS: int = 6
     REMINDER_COOLDOWN_HOURS: int = 6
 
-    # --- Admin ------------------------------------------------------------
-    ADMIN_IDS: list[int] = []
+    # --- Admin (comma-separated Telegram user IDs) -----------------------
+    ADMIN_IDS: str = ""
 
     # --- Validators ------------------------------------------------------
     @property
@@ -121,17 +121,23 @@ class Settings(BaseSettings):
             raise ValueError("TASKS_SECRET must be at least 8 characters")
         return v
 
-    @field_validator("ADMIN_IDS", mode="before")
+    @field_validator("ADMIN_IDS")
     @classmethod
-    def _parse_admin_ids(cls, v: list[int] | str) -> list[int]:
-        if isinstance(v, str):
-            if not v.strip():
-                return []
-            try:
-                return [int(x.strip()) for x in v.split(",") if x.strip()]
-            except ValueError:
-                raise ValueError("ADMIN_IDS must be a comma-separated list of integers")
+    def _validate_admin_ids(cls, v: str) -> str:
+        if not v.strip():
+            return v
+        try:
+            [int(x.strip()) for x in v.split(",") if x.strip()]
+        except ValueError:
+            raise ValueError("ADMIN_IDS must be a comma-separated list of integers")
         return v
+
+    @property
+    def admin_ids_list(self) -> list[int]:
+        """Return parsed ADMIN_IDS as a list of ints."""
+        if not self.ADMIN_IDS.strip():
+            return []
+        return [int(x.strip()) for x in self.ADMIN_IDS.split(",") if x.strip()]
 
 
 @lru_cache(maxsize=1)

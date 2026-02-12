@@ -52,7 +52,8 @@ class TestDefaults:
 
     def test_admin_ids_default_empty(self) -> None:
         s = _make()
-        assert s.ADMIN_IDS == []
+        assert s.ADMIN_IDS == ""
+        assert s.admin_ids_list == []
 
 
 # ---------------------------------------------------------------------------
@@ -125,28 +126,37 @@ class TestTasksSecret:
 class TestAdminIds:
     def test_empty_string(self) -> None:
         s = _make(ADMIN_IDS="")
-        assert s.ADMIN_IDS == []
+        assert s.admin_ids_list == []
 
     def test_single_id(self) -> None:
         s = _make(ADMIN_IDS="123456789")
-        assert s.ADMIN_IDS == [123456789]
+        assert s.admin_ids_list == [123456789]
 
     def test_multiple_ids(self) -> None:
         s = _make(ADMIN_IDS="111,222,333")
-        assert s.ADMIN_IDS == [111, 222, 333]
+        assert s.admin_ids_list == [111, 222, 333]
 
     def test_spaces_stripped(self) -> None:
         s = _make(ADMIN_IDS=" 111 , 222 , 333 ")
-        assert s.ADMIN_IDS == [111, 222, 333]
+        assert s.admin_ids_list == [111, 222, 333]
 
     def test_trailing_comma_ignored(self) -> None:
         s = _make(ADMIN_IDS="111,222,")
-        assert s.ADMIN_IDS == [111, 222]
+        assert s.admin_ids_list == [111, 222]
 
     def test_invalid_string_rejected(self) -> None:
         with pytest.raises(ValidationError, match="comma-separated list of integers"):
             _make(ADMIN_IDS="not_a_number")
 
-    def test_list_passthrough(self) -> None:
-        s = _make(ADMIN_IDS=[42, 99])
-        assert s.ADMIN_IDS == [42, 99]
+    def test_raw_string_stored(self) -> None:
+        s = _make(ADMIN_IDS="42,99")
+        assert s.ADMIN_IDS == "42,99"
+
+    def test_env_var_csv_format(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verify CSV format works when loaded from environment variables."""
+        monkeypatch.setenv("BOT_TOKEN", "test-token")
+        monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost/db")
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        monkeypatch.setenv("ADMIN_IDS", "111,222,333")
+        s = Settings(_env_file=None)  # type: ignore[call-arg]
+        assert s.admin_ids_list == [111, 222, 333]
