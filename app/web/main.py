@@ -1,4 +1,4 @@
-"""FastAPI application: webhook endpoint, health check, lifecycle.
+"""FastAPI application: webhook endpoint, health check, task endpoints, lifecycle.
 
 Supports two modes determined by ``PUBLIC_URL``:
 - **Webhook** (production): ``PUBLIC_URL`` set — registers webhook with
@@ -17,20 +17,25 @@ import logging
 import subprocess
 import sys
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from typing import AsyncIterator
 
 from aiogram import Bot, Dispatcher
 from aiogram.types import Update
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Header, Request, Response
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from app.bot.factory import create_bot, create_dispatcher
 from app.core.config import get_settings
 from app.core.logging import setup_logging
+from app.db.repos import MealRepo
 
 logger = logging.getLogger(__name__)
 
 _bot: Bot | None = None
 _dp: Dispatcher | None = None
+_task_engine: AsyncEngine | None = None
+_session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -75,13 +80,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     3. Create bot + dispatcher.
     4. If ``PUBLIC_URL`` is set → webhook mode; otherwise → polling mode.
     """
-    global _bot, _dp  # noqa: PLW0603
+    global _bot, _dp, _task_engine, _session_factory  # noqa: PLW0603
 
     settings = get_settings()
     setup_logging(settings.LOG_LEVEL)
 
     # --- Auto-migrate ---
     _run_migrations()
+
+    # --- Create DB session factory for task endpoints ---
+    _task_engine = create_async_engine(settings.DATABASE_URL, echo=False, pool_pre_ping=True)
+    _session_factory = async_sessionmaker(_task_engine, expire_on_commit=False)
 
     # --- Create bot + dispatcher ---
     _bot = create_bot(settings)
@@ -122,6 +131,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await polling_task
         logger.info("Polling stopped", extra={"event": "polling_stopped"})
 
+    if _task_engine is not None:
+        await _task_engine.dispose()
+        _task_engine = None
+        _session_factory = None
+        logger.info("Task engine disposed", extra={"event": "task_engine_disposed"})
+
     if _bot:
         if settings.use_webhook:
             await _bot.delete_webhook()
@@ -160,3 +175,38 @@ async def webhook(secret: str, request: Request) -> Response:
     await _dp.feed_update(bot=_bot, update=update)
 
     return Response(status_code=200)
+
+
+# ---------------------------------------------------------------------------
+# Task endpoints (protected by TASKS_SECRET)
+# ---------------------------------------------------------------------------
+
+
+@app.post("/tasks/purge")
+async def task_purge(
+    x_tasks_secret: str | None = Header(default=None),
+) -> dict[str, object]:
+    """Permanently delete soft-deleted meals older than retention period.
+
+    Protected by ``X-Tasks-Secret`` header. Returns 403 if secret is
+    wrong, missing, or not configured.
+    """
+    settings = get_settings()
+    if not settings.TASKS_SECRET or x_tasks_secret != settings.TASKS_SECRET:
+        return Response(status_code=403)  # type: ignore[return-value]
+
+    if _session_factory is None:
+        return Response(status_code=503)  # type: ignore[return-value]
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=settings.PURGE_DELETED_AFTER_DAYS)
+
+    async with _session_factory() as session:
+        count = await MealRepo.hard_delete_deleted_before(session, cutoff)
+        await session.commit()
+
+    logger.info(
+        "Purge completed: %d rows deleted",
+        count,
+        extra={"event": "purge_done", "deleted_count": count},
+    )
+    return {"status": "ok", "deleted_count": count}

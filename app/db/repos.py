@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import MealEntry, User
@@ -219,3 +219,27 @@ class MealRepo:
         )
         result = await session.execute(stmt)
         return list(result.scalars().all())
+
+    @staticmethod
+    async def hard_delete_deleted_before(
+        session: AsyncSession,
+        cutoff: datetime,
+    ) -> int:
+        """Permanently remove soft-deleted meals older than *cutoff*.
+
+        Only rows with ``is_deleted=True`` **and** ``deleted_at < cutoff``
+        are removed.
+
+        Args:
+            session: Active async session.
+            cutoff: UTC datetime threshold.
+
+        Returns:
+            Number of rows permanently deleted.
+        """
+        stmt = delete(MealEntry).where(
+            MealEntry.is_deleted.is_(True),
+            MealEntry.deleted_at < cutoff,
+        )
+        result = await session.execute(stmt)
+        return result.rowcount  # type: ignore[return-value]
