@@ -12,7 +12,7 @@ from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.keyboards import language_keyboard, main_keyboard
+from app.bot.keyboards import language_keyboard
 from app.db.repos import UserRepo
 from app.i18n import t
 
@@ -52,7 +52,4 @@ async def on_language_selected(callback: CallbackQuery, session: AsyncSession) -
 
     label = _LANG_LABELS[lang]
     await callback.message.edit_text(t("lang_set_confirmation", lang).format(label=label))  # type: ignore[union-attr]
-    await callback.message.answer(  # type: ignore[union-attr]
-        "👇", reply_markup=main_keyboard(lang)
-    )
     await callback.answer()
