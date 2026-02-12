@@ -132,10 +132,10 @@ async def handle_photo(message: Message, session: AsyncSession, bot: Bot) -> Non
 
     # Typing heartbeat + OpenAI call
     analysis = await _analyze_with_typing(
-        message, bot, lambda svc: _do_photo_analysis(svc, bot, photo.file_id, caption)
+        message, bot, lambda svc: _do_photo_analysis(svc, bot, photo.file_id, caption),
+        proc_msg=proc_msg,
     )
     if analysis is None:
-        await proc_msg.edit_text(MSG_UNRECOGNIZED)
         return
 
     await _handle_analysis_result(
@@ -201,10 +201,10 @@ async def handle_text(message: Message, session: AsyncSession, bot: Bot, state: 
 
     # Typing heartbeat + OpenAI call
     analysis = await _analyze_with_typing(
-        message, bot, lambda svc: svc.analyze_text(message.text or "")
+        message, bot, lambda svc: svc.analyze_text(message.text or ""),
+        proc_msg=proc_msg,
     )
     if analysis is None:
-        await proc_msg.edit_text(MSG_UNRECOGNIZED)
         return
 
     await _handle_analysis_result(
@@ -345,13 +345,24 @@ async def _analyze_with_typing(
     message: Message,
     bot: Bot,
     analyze_fn: Any,
+    *,
+    proc_msg: Message | None = None,
 ) -> NutritionAnalysis | None:
     """Run OpenAI analysis with typing heartbeat and concurrency guard.
 
-    Returns the analysis result or None if throttled/errored.
+    Returns the analysis result or ``None`` if throttled/errored.
+    When *proc_msg* is provided, throttle and error messages are written
+    into the processing message (edit in place) instead of sending a new reply.
     """
+
+    async def _reply_or_edit(text: str) -> None:
+        if proc_msg is not None:
+            await proc_msg.edit_text(text)
+        else:
+            await message.reply(text)
+
     if message.from_user is None or ai_service is None:
-        await message.reply(MSG_UNRECOGNIZED)
+        await _reply_or_edit(MSG_UNRECOGNIZED)
         return None
 
     uid = message.from_user.id
@@ -360,7 +371,7 @@ async def _analyze_with_typing(
     if concurrency_guard:
         async with concurrency_guard(uid) as ctx:
             if not ctx.acquired:
-                await message.reply(MSG_THROTTLE)
+                await _reply_or_edit(MSG_THROTTLE)
                 return None
             return await _run_with_typing(message, bot, analyze_fn)
     else:
@@ -526,10 +537,10 @@ async def _handle_edit_text(
 
     # OpenAI analysis (required per spec §3.7 — ingredients must be generated)
     analysis = await _analyze_with_typing(
-        message, bot, lambda svc: svc.analyze_text(message.text or "")
+        message, bot, lambda svc: svc.analyze_text(message.text or ""),
+        proc_msg=proc_msg,
     )
     if analysis is None:
-        await proc_msg.edit_text(MSG_UNRECOGNIZED)
         return
 
     await _handle_analysis_result(

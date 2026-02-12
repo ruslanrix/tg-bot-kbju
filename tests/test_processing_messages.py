@@ -20,6 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.handlers.meal import (
     MSG_PROCESSING_EDIT,
     MSG_PROCESSING_NEW,
+    MSG_UNRECOGNIZED,
+    _analyze_with_typing,
     _handle_analysis_result,
 )
 from app.db.models import MealEntry, User
@@ -240,3 +242,95 @@ class TestProcMsgEditing:
 
         proc.edit_text.assert_called_once()
         assert "Saved" in proc.edit_text.call_args.args[0]
+
+
+# ---------------------------------------------------------------------------
+# Tests: Throttle edits proc_msg (P2 review fix)
+# ---------------------------------------------------------------------------
+
+
+class TestThrottleEditsProcMsg:
+    @pytest.mark.asyncio
+    async def test_concurrency_guard_edits_proc_msg_with_throttle(self) -> None:
+        """When concurrency guard rejects, proc_msg shows throttle text, not unrecognized."""
+        msg = _make_message()
+        proc = _make_proc_msg()
+        bot = AsyncMock()
+
+        # Fake concurrency guard that rejects (acquired=False)
+        class FakeCtx:
+            acquired = False
+
+        class FakeGuard:
+            def __call__(self, uid: int):  # noqa: ANN204
+                return self
+
+            async def __aenter__(self):  # noqa: ANN204
+                return FakeCtx()
+
+            async def __aexit__(self, *args: object) -> None:
+                pass
+
+        with (
+            patch("app.bot.handlers.meal.ai_service", new=MagicMock()),
+            patch("app.bot.handlers.meal.concurrency_guard", new=FakeGuard()),
+        ):
+            result = await _analyze_with_typing(
+                msg, bot, lambda svc: svc.analyze_text("food"),
+                proc_msg=proc,
+            )
+
+        assert result is None
+        proc.edit_text.assert_called_once()
+        assert "wait" in proc.edit_text.call_args.args[0].lower()
+        msg.reply.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_concurrency_guard_replies_without_proc_msg(self) -> None:
+        """Without proc_msg, throttle falls back to message.reply."""
+        msg = _make_message()
+        bot = AsyncMock()
+
+        class FakeCtx:
+            acquired = False
+
+        class FakeGuard:
+            def __call__(self, uid: int):  # noqa: ANN204
+                return self
+
+            async def __aenter__(self):  # noqa: ANN204
+                return FakeCtx()
+
+            async def __aexit__(self, *args: object) -> None:
+                pass
+
+        with (
+            patch("app.bot.handlers.meal.ai_service", new=MagicMock()),
+            patch("app.bot.handlers.meal.concurrency_guard", new=FakeGuard()),
+        ):
+            result = await _analyze_with_typing(
+                msg, bot, lambda svc: svc.analyze_text("food"),
+                proc_msg=None,
+            )
+
+        assert result is None
+        msg.reply.assert_called_once()
+        assert "wait" in msg.reply.call_args.args[0].lower()
+
+    @pytest.mark.asyncio
+    async def test_no_ai_service_edits_proc_msg(self) -> None:
+        """When ai_service is None, proc_msg shows unrecognized text."""
+        msg = _make_message()
+        proc = _make_proc_msg()
+        bot = AsyncMock()
+
+        with patch("app.bot.handlers.meal.ai_service", new=None):
+            result = await _analyze_with_typing(
+                msg, bot, lambda svc: svc.analyze_text("food"),
+                proc_msg=proc,
+            )
+
+        assert result is None
+        proc.edit_text.assert_called_once()
+        assert proc.edit_text.call_args.args[0] == MSG_UNRECOGNIZED
+        msg.reply.assert_not_called()
