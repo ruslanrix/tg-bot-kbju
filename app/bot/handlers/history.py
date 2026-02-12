@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.formatters import format_history_entry
 from app.bot.keyboards import history_delete_keyboard
 from app.db.repos import MealRepo, UserRepo
+from app.i18n import t
 
 router = Router(name="history")
 
@@ -23,9 +24,9 @@ async def cmd_history(message: Message, session: AsyncSession) -> None:
     await _show_history(message, session)
 
 
-@router.message(lambda m: m.text == "🕘 History")
+@router.message(lambda m: m.text in ("🕘 History", "🕘 История"))
 async def btn_history(message: Message, session: AsyncSession) -> None:
-    """Handle the 🕘 History reply keyboard button."""
+    """Handle the 🕘 History reply keyboard button (EN or RU label)."""
     await _show_history(message, session)
 
 
@@ -35,10 +36,11 @@ async def _show_history(message: Message, session: AsyncSession) -> None:
         return
 
     user = await UserRepo.get_or_create(session, message.from_user.id)
+    lang = user.language
     meals = await MealRepo.list_recent(session, user.id, limit=20)
 
     if not meals:
-        await message.answer("No meals recorded yet.")
+        await message.answer(t("fmt_no_meals", lang))
         return
 
     for meal in meals:
@@ -52,5 +54,5 @@ async def _show_history(message: Message, session: AsyncSession) -> None:
         )
         await message.answer(
             text,
-            reply_markup=history_delete_keyboard(str(meal.id)),
+            reply_markup=history_delete_keyboard(str(meal.id), lang),
         )

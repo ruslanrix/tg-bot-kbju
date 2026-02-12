@@ -145,6 +145,26 @@ STRINGS: dict[str, str] = {
     ),
 
     # ---------------------------------------------------------------------------
+    # Language selection (language.py)
+    # ---------------------------------------------------------------------------
+    "lang_unknown": "Unknown language.",
+    "lang_set_confirmation": "Language set to {label} ✅",
+
+    # ---------------------------------------------------------------------------
+    # Precheck (precheck.py)
+    # ---------------------------------------------------------------------------
+    "precheck_not_text_or_photo": "Please ✏️ write a food or drink or send me a 📸 photo.",
+    "precheck_water": (
+        "I can't analyse that because it seems to just say 'вода', "
+        "which means 'water'. Water doesn't contain calories or macros. 😀"
+    ),
+    "precheck_vague": (
+        "I can't analyse that because the text is not in English and "
+        "lacks sufficient detail about the food item to make an estimation 😀"
+    ),
+    "precheck_photo_too_large": "The photo is too large. Please resend a clearer or smaller photo 📸",
+
+    # ---------------------------------------------------------------------------
     # Navigation
     # ---------------------------------------------------------------------------
     "nav_arrow": "👇",

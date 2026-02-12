@@ -20,11 +20,13 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.handlers.meal import (
-    MSG_DELETE_WINDOW_EXPIRED,
     on_history_delete,
     on_saved_delete,
 )
 from app.db.models import MealEntry, User
+from app.i18n import t
+
+MSG_DELETE_WINDOW_EXPIRED = t("msg_delete_window_expired", "EN")
 
 
 # ---------------------------------------------------------------------------

@@ -1,12 +1,14 @@
 """Message formatting helpers for the Telegram bot.
 
 All output templates match the spec §3.4 / §8 requirements.
+User-facing labels are resolved via ``t(key, lang)`` for i18n.
 """
 
 from __future__ import annotations
 
 from datetime import date
 
+from app.i18n import t as tr
 from app.reports.stats import DayStats, WeekAvgStats
 from app.services.nutrition_ai import Ingredient, NutritionAnalysis
 
@@ -26,58 +28,58 @@ def _format_ingredient_line(ing: Ingredient) -> str:
     return f"• {ing.name} ({', '.join(parts)})"
 
 
-def _format_meal_body(analysis: NutritionAnalysis) -> list[str]:
+def _format_meal_body(analysis: NutritionAnalysis, lang: str = "EN") -> list[str]:
     """Shared body lines: calories, macros, totals, ingredients."""
     lines: list[str] = []
     lines.append("")
-    lines.append("Calories")
+    lines.append(tr("fmt_calories", lang))
     lines.append(f"{analysis.calories_kcal}kcal")
     lines.append("")
-    lines.append("Macros")
-    lines.append(f"• Protein: {analysis.protein_g}g")
-    lines.append(f"• Carbs: {analysis.carbs_g}g")
-    lines.append(f"• Fat: {analysis.fat_g}g")
+    lines.append(tr("fmt_macros", lang))
+    lines.append(f"• {tr('fmt_protein', lang)}: {analysis.protein_g}g")
+    lines.append(f"• {tr('fmt_carbs', lang)}: {analysis.carbs_g}g")
+    lines.append(f"• {tr('fmt_fat', lang)}: {analysis.fat_g}g")
 
     # Total weight / volume / caffeine (show only if present)
     totals: list[str] = []
     if analysis.weight_g is not None:
-        totals.append(f"Weight: {analysis.weight_g}g")
+        totals.append(f"{tr('fmt_weight', lang)}: {analysis.weight_g}g")
     if analysis.volume_ml is not None:
-        totals.append(f"Volume: {analysis.volume_ml}ml")
+        totals.append(f"{tr('fmt_volume', lang)}: {analysis.volume_ml}ml")
     if analysis.caffeine_mg is not None:
-        totals.append(f"Caffeine: {analysis.caffeine_mg}mg")
+        totals.append(f"{tr('fmt_caffeine', lang)}: {analysis.caffeine_mg}mg")
     if totals:
         lines.append("")
-        lines.append("Totals")
-        for t in totals:
-            lines.append(f"• {t}")
+        lines.append(tr("fmt_totals", lang))
+        for total in totals:
+            lines.append(f"• {total}")
 
     if analysis.likely_ingredients:
         lines.append("")
-        lines.append("Likely Ingredients")
+        lines.append(tr("fmt_likely_ingredients", lang))
         for ing in analysis.likely_ingredients:
             lines.append(_format_ingredient_line(ing))
 
     return lines
 
 
-def format_meal_saved(analysis: NutritionAnalysis) -> str:
+def format_meal_saved(analysis: NutritionAnalysis, lang: str = "EN") -> str:
     """Format the meal summary shown after saving (spec §3.4).
 
     Includes meal name, calories, macros, totals, and likely ingredients.
     """
-    lines = [f"✅ Saved. You added: {analysis.meal_name}"]
-    lines.extend(_format_meal_body(analysis))
+    lines = [f"{tr('fmt_saved_prefix', lang)}{analysis.meal_name}"]
+    lines.extend(_format_meal_body(analysis, lang))
     return "\n".join(lines)
 
 
-def format_meal_draft(analysis: NutritionAnalysis) -> str:
+def format_meal_draft(analysis: NutritionAnalysis, lang: str = "EN") -> str:
     """Format the draft preview (before saving).
 
     Same as saved but with a different header.
     """
-    lines = [f"🍽 Draft: {analysis.meal_name}"]
-    lines.extend(_format_meal_body(analysis))
+    lines = [f"{tr('fmt_draft_prefix', lang)}{analysis.meal_name}"]
+    lines.extend(_format_meal_body(analysis, lang))
     return "\n".join(lines)
 
 
@@ -86,14 +88,14 @@ def format_meal_draft(analysis: NutritionAnalysis) -> str:
 # ---------------------------------------------------------------------------
 
 
-def format_today_stats(stats: DayStats) -> str:
+def format_today_stats(stats: DayStats, lang: str = "EN") -> str:
     """Format Today's Stats block shown after saving a meal."""
     return (
-        "📊 Today's Stats\n"
-        f"⚪ Calories: {stats['calories_kcal']}kcal\n"
-        f"⚪ Carbs: {stats['carbs_g']}g\n"
-        f"⚪ Protein: {stats['protein_g']}g\n"
-        f"⚪ Fat: {stats['fat_g']}g"
+        f"{tr('fmt_today_stats_header', lang)}\n"
+        f"⚪ {tr('fmt_calories', lang)}: {stats['calories_kcal']}kcal\n"
+        f"⚪ {tr('fmt_carbs', lang)}: {stats['carbs_g']}g\n"
+        f"⚪ {tr('fmt_protein', lang)}: {stats['protein_g']}g\n"
+        f"⚪ {tr('fmt_fat', lang)}: {stats['fat_g']}g"
     )
 
 
@@ -102,9 +104,9 @@ def format_today_stats(stats: DayStats) -> str:
 # ---------------------------------------------------------------------------
 
 
-def format_weekly_stats(days: list[DayStats]) -> str:
+def format_weekly_stats(days: list[DayStats], lang: str = "EN") -> str:
     """Format per-day breakdown for the last 7 days."""
-    lines: list[str] = ["📊 Weekly Stats (Last 7 Days)"]
+    lines: list[str] = [tr("fmt_weekly_stats_header", lang)]
     lines.append("")
     for day in days:
         d: date = day["date"]
@@ -122,9 +124,10 @@ def format_weekly_stats(days: list[DayStats]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def format_four_week_stats(weeks: list[WeekAvgStats]) -> str:
+def format_four_week_stats(weeks: list[WeekAvgStats], lang: str = "EN") -> str:
     """Format weekly averages for the last 4 weeks."""
-    lines: list[str] = ["📊 4-Week Stats (Daily Averages)"]
+    week_label = tr("fmt_week_label", lang)
+    lines: list[str] = [tr("fmt_4week_stats_header", lang)]
     lines.append("")
     for i, week in enumerate(weeks, 1):
         ws = week["week_start"].strftime("%b %d")
@@ -133,7 +136,7 @@ def format_four_week_stats(weeks: list[WeekAvgStats]) -> str:
         p = week["avg_protein_g"]
         c = week["avg_carbs_g"]
         f = week["avg_fat_g"]
-        lines.append(f"Week {i} ({ws}–{we}): {cal}kcal | P:{p}g C:{c}g F:{f}g")
+        lines.append(f"{week_label} {i} ({ws}–{we}): {cal}kcal | P:{p}g C:{c}g F:{f}g")
     return "\n".join(lines)
 
 

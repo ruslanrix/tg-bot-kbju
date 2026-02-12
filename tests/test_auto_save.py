@@ -309,8 +309,13 @@ class TestLegacyDraftFallbacks:
         from app.bot.handlers.meal import on_legacy_draft_save
 
         cb = AsyncMock()
+        cb.from_user = MagicMock()
+        cb.from_user.id = 111
         cb.answer = AsyncMock()
-        await on_legacy_draft_save(cb)
+        session = AsyncMock(spec=AsyncSession)
+        with patch("app.bot.handlers.meal.UserRepo") as mock_repo:
+            mock_repo.get_or_create = AsyncMock(return_value=_make_user())
+            await on_legacy_draft_save(cb, session)
         cb.answer.assert_called_once()
         call_args = cb.answer.call_args
         assert "expired" in call_args.args[0].lower()
@@ -322,8 +327,13 @@ class TestLegacyDraftFallbacks:
         from app.bot.handlers.meal import on_legacy_draft_edit
 
         cb = AsyncMock()
+        cb.from_user = MagicMock()
+        cb.from_user.id = 111
         cb.answer = AsyncMock()
-        await on_legacy_draft_edit(cb)
+        session = AsyncMock(spec=AsyncSession)
+        with patch("app.bot.handlers.meal.UserRepo") as mock_repo:
+            mock_repo.get_or_create = AsyncMock(return_value=_make_user())
+            await on_legacy_draft_edit(cb, session)
         cb.answer.assert_called_once()
         assert "expired" in cb.answer.call_args.args[0].lower()
 
@@ -333,7 +343,14 @@ class TestLegacyDraftFallbacks:
         from app.bot.handlers.meal import on_legacy_draft_delete
 
         cb = AsyncMock()
+        cb.from_user = MagicMock()
+        cb.from_user.id = 111
         cb.answer = AsyncMock()
-        await on_legacy_draft_delete(cb)
+        session = AsyncMock(spec=AsyncSession)
+        with patch("app.bot.handlers.meal.UserRepo") as mock_repo:
+            mock_repo.get_or_create = AsyncMock(return_value=_make_user())
+            await on_legacy_draft_delete(cb, session)
         cb.answer.assert_called_once()
-        assert "expired" in cb.answer.call_args.args[0].lower()
+        call_args = cb.answer.call_args
+        assert "expired" in call_args.args[0].lower()
+        assert call_args.kwargs.get("show_alert") is True

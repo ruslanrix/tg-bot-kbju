@@ -5,10 +5,10 @@ from __future__ import annotations
 import pytest
 
 from app.services.precheck import (
-    MSG_NOT_TEXT_OR_PHOTO,
-    MSG_PHOTO_TOO_LARGE,
-    MSG_VAGUE,
-    MSG_WATER,
+    REJECT_NOT_TEXT_OR_PHOTO,
+    REJECT_PHOTO_TOO_LARGE,
+    REJECT_VAGUE,
+    REJECT_WATER,
     check_message_type,
     check_photo_size,
     check_text,
@@ -35,7 +35,7 @@ class TestMessageType:
     def test_sticker_rejected(self):
         r = check_message_type(has_text=False, has_photo=False)
         assert not r.passed
-        assert r.reject_message == MSG_NOT_TEXT_OR_PHOTO
+        assert r.reject_key == REJECT_NOT_TEXT_OR_PHOTO
 
 
 # ---------------------------------------------------------------------------
@@ -55,7 +55,7 @@ class TestEmptyJunk:
     def test_only_emoji(self):
         r = check_text("🍕🍔🥗", has_photo=False)
         assert not r.passed
-        assert r.reject_message == MSG_NOT_TEXT_OR_PHOTO
+        assert r.reject_key == REJECT_NOT_TEXT_OR_PHOTO
 
     def test_only_punctuation(self):
         r = check_text("!!!???...", has_photo=False)
@@ -93,12 +93,12 @@ class TestWater:
     def test_water_rejected(self, text: str):
         r = check_text(text, has_photo=False)
         assert not r.passed
-        assert r.reject_message == MSG_WATER
+        assert r.reject_key == REJECT_WATER
 
     def test_water_case_insensitive(self):
         r = check_text("Вода", has_photo=False)
         assert not r.passed
-        assert r.reject_message == MSG_WATER
+        assert r.reject_key == REJECT_WATER
 
     def test_vodka_not_rejected(self):
         """'водка' must NOT be a false positive for 'вода'."""
@@ -121,7 +121,7 @@ class TestMedicine:
     def test_medicine_rejected(self, text: str):
         r = check_text(text, has_photo=False)
         assert not r.passed
-        assert r.reject_message == MSG_NOT_TEXT_OR_PHOTO
+        assert r.reject_key == REJECT_NOT_TEXT_OR_PHOTO
 
     def test_medicine_in_sentence(self):
         r = check_text("выпил таблетка утром", has_photo=False)
@@ -142,7 +142,7 @@ class TestVague:
     def test_vague_text_rejected(self, text: str):
         r = check_text(text, has_photo=False)
         assert not r.passed
-        assert r.reject_message == MSG_VAGUE
+        assert r.reject_key == REJECT_VAGUE
 
     def test_vague_with_photo_passes(self):
         """Vague words with a photo should NOT be rejected (§5.5 applies only to text-only)."""
@@ -178,4 +178,4 @@ class TestPhotoSize:
     def test_over_limit(self):
         r = check_photo_size(10_000_000, max_bytes=5_000_000)
         assert not r.passed
-        assert r.reject_message == MSG_PHOTO_TOO_LARGE
+        assert r.reject_key == REJECT_PHOTO_TOO_LARGE

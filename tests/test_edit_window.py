@@ -17,8 +17,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.handlers.meal import MSG_EDIT_WINDOW_EXPIRED, _handle_edit_text, on_saved_edit
+from app.bot.handlers.meal import _handle_edit_text, on_saved_edit
 from app.db.models import MealEntry, User
+from app.i18n import t
+
+MSG_EDIT_WINDOW_EXPIRED = t("msg_edit_window_expired", "EN")
 
 
 # ---------------------------------------------------------------------------
