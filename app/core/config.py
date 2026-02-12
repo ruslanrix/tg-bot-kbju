@@ -38,6 +38,23 @@ class Settings(BaseSettings):
     MAX_CONCURRENT_PER_USER: int = 1
     PORT: int = 8000
 
+    # --- Edit / Delete windows --------------------------------------------
+    EDIT_WINDOW_HOURS: int = 48
+    DELETE_WINDOW_HOURS: int = 48
+
+    # --- Retention purge --------------------------------------------------
+    PURGE_DELETED_AFTER_DAYS: int = 30
+
+    # --- Scheduled tasks --------------------------------------------------
+    TASKS_SECRET: str = ""
+
+    # --- Inactivity reminders ---------------------------------------------
+    REMINDER_INACTIVITY_HOURS: int = 6
+    REMINDER_COOLDOWN_HOURS: int = 6
+
+    # --- Admin (comma-separated Telegram user IDs) -----------------------
+    ADMIN_IDS: str = ""
+
     # --- Validators ------------------------------------------------------
     @property
     def use_webhook(self) -> bool:
@@ -71,7 +88,17 @@ class Settings(BaseSettings):
             raise ValueError("WEBHOOK_SECRET is required when PUBLIC_URL is set")
         return self
 
-    @field_validator("OPENAI_TIMEOUT_SECONDS", "MAX_PHOTO_BYTES", "RATE_LIMIT_PER_MINUTE", "PORT")
+    @field_validator(
+        "OPENAI_TIMEOUT_SECONDS",
+        "MAX_PHOTO_BYTES",
+        "RATE_LIMIT_PER_MINUTE",
+        "PORT",
+        "EDIT_WINDOW_HOURS",
+        "DELETE_WINDOW_HOURS",
+        "PURGE_DELETED_AFTER_DAYS",
+        "REMINDER_INACTIVITY_HOURS",
+        "REMINDER_COOLDOWN_HOURS",
+    )
     @classmethod
     def _validate_positive(cls, v: int) -> int:
         if v <= 0:
@@ -84,6 +111,33 @@ class Settings(BaseSettings):
         if v < 1:
             raise ValueError("MAX_CONCURRENT_PER_USER must be at least 1")
         return v
+
+    @field_validator("TASKS_SECRET")
+    @classmethod
+    def _validate_tasks_secret(cls, v: str) -> str:
+        if not v:  # empty = tasks endpoints disabled
+            return v
+        if len(v) < 8:
+            raise ValueError("TASKS_SECRET must be at least 8 characters")
+        return v
+
+    @field_validator("ADMIN_IDS")
+    @classmethod
+    def _validate_admin_ids(cls, v: str) -> str:
+        if not v.strip():
+            return v
+        try:
+            [int(x.strip()) for x in v.split(",") if x.strip()]
+        except ValueError:
+            raise ValueError("ADMIN_IDS must be a comma-separated list of integers")
+        return v
+
+    @property
+    def admin_ids_list(self) -> list[int]:
+        """Return parsed ADMIN_IDS as a list of ints."""
+        if not self.ADMIN_IDS.strip():
+            return []
+        return [int(x.strip()) for x in self.ADMIN_IDS.split(",") if x.strip()]
 
 
 @lru_cache(maxsize=1)
