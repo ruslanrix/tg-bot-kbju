@@ -98,37 +98,41 @@ class UserRepo:
         await session.execute(stmt)
 
     @staticmethod
-    async def get_inactive_users(
+    async def claim_inactive_users(
         session: AsyncSession,
         inactivity_cutoff: datetime,
         cooldown_cutoff: datetime,
     ) -> list[User]:
-        """Return users eligible for an inactivity reminder.
+        """Atomically claim users eligible for an inactivity reminder.
+
+        In a single ``UPDATE … RETURNING`` statement this method:
+        1. Selects users matching eligibility criteria.
+        2. Sets ``last_reminder_at = now()`` on those rows.
+        3. Returns the claimed ``User`` objects.
+
+        Because the update is atomic, concurrent ``/tasks/remind``
+        calls cannot claim the same users (the second caller sees the
+        already-updated ``last_reminder_at`` and skips them).
 
         Eligible means:
+        - ``tz_mode`` is set (user completed onboarding)
         - ``last_activity_at`` is not NULL and older than *inactivity_cutoff*
         - ``last_reminder_at`` is NULL **or** older than *cooldown_cutoff*
-        - ``tz_mode`` is set (user completed onboarding)
         """
-        stmt = select(User).where(
-            User.tz_mode.is_not(None),
-            User.last_activity_at.is_not(None),
-            User.last_activity_at < inactivity_cutoff,
-            (User.last_reminder_at.is_(None)) | (User.last_reminder_at < cooldown_cutoff),
-        )
-        result = await session.execute(stmt)
-        return list(result.scalars().all())
-
-    @staticmethod
-    async def update_last_reminder(session: AsyncSession, user_id: uuid.UUID) -> None:
-        """Set ``last_reminder_at`` to now for a given user."""
         now = datetime.now(timezone.utc)
         stmt = (
             update(User)
-            .where(User.id == user_id)
+            .where(
+                User.tz_mode.is_not(None),
+                User.last_activity_at.is_not(None),
+                User.last_activity_at < inactivity_cutoff,
+                (User.last_reminder_at.is_(None)) | (User.last_reminder_at < cooldown_cutoff),
+            )
             .values(last_reminder_at=now)
+            .returning(User)
         )
-        await session.execute(stmt)
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
 
 
 # ---------------------------------------------------------------------------

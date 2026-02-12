@@ -237,25 +237,30 @@ async def task_remind(
     inactivity_cutoff = now - timedelta(hours=settings.REMINDER_INACTIVITY_HOURS)
     cooldown_cutoff = now - timedelta(hours=settings.REMINDER_COOLDOWN_HOURS)
 
+    # Atomically claim eligible users (UPDATE … SET last_reminder_at = now()
+    # RETURNING …).  This prevents duplicate reminders from concurrent calls
+    # and avoids a separate DB write per user that could corrupt the session.
     async with _session_factory() as session:
-        users = await UserRepo.get_inactive_users(session, inactivity_cutoff, cooldown_cutoff)
-
-        sent = 0
-        failed = 0
-        for user in users:
-            try:
-                await _bot.send_message(chat_id=user.tg_user_id, text=REMINDER_TEXT)
-                await UserRepo.update_last_reminder(session, user.id)
-                sent += 1
-            except Exception:
-                failed += 1
-                logger.warning(
-                    "Failed to send reminder to user %s",
-                    user.tg_user_id,
-                    exc_info=True,
-                )
-
+        users = await UserRepo.claim_inactive_users(
+            session, inactivity_cutoff, cooldown_cutoff,
+        )
         await session.commit()
+
+    # Send reminders outside the DB session — failures are safe because
+    # last_reminder_at is already persisted (anti-spam preserved).
+    sent = 0
+    failed = 0
+    for user in users:
+        try:
+            await _bot.send_message(chat_id=user.tg_user_id, text=REMINDER_TEXT)
+            sent += 1
+        except Exception:
+            failed += 1
+            logger.warning(
+                "Failed to send reminder to user %s",
+                user.tg_user_id,
+                exc_info=True,
+            )
 
     logger.info(
         "Remind completed: %d sent, %d failed",

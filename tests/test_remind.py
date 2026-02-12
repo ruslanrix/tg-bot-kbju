@@ -1,8 +1,7 @@
 """Tests for inactivity reminder task endpoint (Step 13).
 
 Verifies:
-- UserRepo.get_inactive_users eligibility/cooldown logic.
-- UserRepo.update_last_reminder sets last_reminder_at.
+- UserRepo.claim_inactive_users eligibility, cooldown, and atomic claim.
 - /tasks/remind endpoint auth, sends reminders, handles failures.
 """
 
@@ -45,7 +44,7 @@ def _make_user(
 
 
 # ---------------------------------------------------------------------------
-# DB integration tests: get_inactive_users
+# DB integration tests: claim_inactive_users
 # ---------------------------------------------------------------------------
 
 NOW = datetime.now(timezone.utc)
@@ -53,18 +52,24 @@ INACTIVITY_CUTOFF = NOW - timedelta(hours=6)
 COOLDOWN_CUTOFF = NOW - timedelta(hours=6)
 
 
-class TestGetInactiveUsers:
-    """Test UserRepo.get_inactive_users with real SQLite DB."""
+class TestClaimInactiveUsers:
+    """Test UserRepo.claim_inactive_users with real SQLite DB."""
 
-    async def test_eligible_user_returned(self, session: AsyncSession) -> None:
-        """User inactive >6h, no reminder → eligible."""
+    async def test_eligible_user_claimed(self, session: AsyncSession) -> None:
+        """User inactive >6h, no reminder → claimed and last_reminder_at set."""
         user = _make_user(111, last_activity_at=NOW - timedelta(hours=8))
         session.add(user)
         await session.flush()
 
-        result = await UserRepo.get_inactive_users(session, INACTIVITY_CUTOFF, COOLDOWN_CUTOFF)
+        result = await UserRepo.claim_inactive_users(session, INACTIVITY_CUTOFF, COOLDOWN_CUTOFF)
         assert len(result) == 1
         assert result[0].tg_user_id == 111
+
+        # Verify last_reminder_at was set atomically
+        await session.flush()
+        row = await session.execute(select(User).where(User.tg_user_id == 111))
+        updated = row.scalar_one()
+        assert updated.last_reminder_at is not None
 
     async def test_recently_active_user_excluded(self, session: AsyncSession) -> None:
         """User active 2h ago → not eligible."""
@@ -72,7 +77,7 @@ class TestGetInactiveUsers:
         session.add(user)
         await session.flush()
 
-        result = await UserRepo.get_inactive_users(session, INACTIVITY_CUTOFF, COOLDOWN_CUTOFF)
+        result = await UserRepo.claim_inactive_users(session, INACTIVITY_CUTOFF, COOLDOWN_CUTOFF)
         assert len(result) == 0
 
     async def test_recently_reminded_user_excluded(self, session: AsyncSession) -> None:
@@ -85,7 +90,7 @@ class TestGetInactiveUsers:
         session.add(user)
         await session.flush()
 
-        result = await UserRepo.get_inactive_users(session, INACTIVITY_CUTOFF, COOLDOWN_CUTOFF)
+        result = await UserRepo.claim_inactive_users(session, INACTIVITY_CUTOFF, COOLDOWN_CUTOFF)
         assert len(result) == 0
 
     async def test_old_reminder_user_eligible(self, session: AsyncSession) -> None:
@@ -98,7 +103,7 @@ class TestGetInactiveUsers:
         session.add(user)
         await session.flush()
 
-        result = await UserRepo.get_inactive_users(session, INACTIVITY_CUTOFF, COOLDOWN_CUTOFF)
+        result = await UserRepo.claim_inactive_users(session, INACTIVITY_CUTOFF, COOLDOWN_CUTOFF)
         assert len(result) == 1
 
     async def test_no_activity_user_excluded(self, session: AsyncSession) -> None:
@@ -107,7 +112,7 @@ class TestGetInactiveUsers:
         session.add(user)
         await session.flush()
 
-        result = await UserRepo.get_inactive_users(session, INACTIVITY_CUTOFF, COOLDOWN_CUTOFF)
+        result = await UserRepo.claim_inactive_users(session, INACTIVITY_CUTOFF, COOLDOWN_CUTOFF)
         assert len(result) == 0
 
     async def test_no_timezone_user_excluded(self, session: AsyncSession) -> None:
@@ -116,11 +121,11 @@ class TestGetInactiveUsers:
         session.add(user)
         await session.flush()
 
-        result = await UserRepo.get_inactive_users(session, INACTIVITY_CUTOFF, COOLDOWN_CUTOFF)
+        result = await UserRepo.claim_inactive_users(session, INACTIVITY_CUTOFF, COOLDOWN_CUTOFF)
         assert len(result) == 0
 
     async def test_mixed_users(self, session: AsyncSession) -> None:
-        """Mix of eligible and ineligible users → only eligible returned."""
+        """Mix of eligible and ineligible users → only eligible claimed."""
         eligible = _make_user(700, last_activity_at=NOW - timedelta(hours=10))
         active = _make_user(701, last_activity_at=NOW - timedelta(hours=1))
         cooldown = _make_user(
@@ -133,39 +138,22 @@ class TestGetInactiveUsers:
         session.add_all([eligible, active, cooldown, no_tz])
         await session.flush()
 
-        result = await UserRepo.get_inactive_users(session, INACTIVITY_CUTOFF, COOLDOWN_CUTOFF)
+        result = await UserRepo.claim_inactive_users(session, INACTIVITY_CUTOFF, COOLDOWN_CUTOFF)
         tg_ids = {u.tg_user_id for u in result}
         assert tg_ids == {700}
 
-
-# ---------------------------------------------------------------------------
-# DB integration tests: update_last_reminder
-# ---------------------------------------------------------------------------
-
-
-class TestUpdateLastReminder:
-    """Test UserRepo.update_last_reminder."""
-
-    async def test_sets_last_reminder_at(self, session: AsyncSession) -> None:
-        """update_last_reminder sets last_reminder_at to approximately now."""
-        user = _make_user(800, last_activity_at=NOW - timedelta(hours=10))
+    async def test_second_claim_returns_empty(self, session: AsyncSession) -> None:
+        """Second claim on same users → empty (already claimed, anti-duplicate)."""
+        user = _make_user(800, last_activity_at=NOW - timedelta(hours=8))
         session.add(user)
         await session.flush()
 
-        before = datetime.now(timezone.utc).replace(tzinfo=None)
-        await UserRepo.update_last_reminder(session, user.id)
-        await session.flush()
+        first = await UserRepo.claim_inactive_users(session, INACTIVITY_CUTOFF, COOLDOWN_CUTOFF)
+        assert len(first) == 1
 
-        result = await session.execute(select(User).where(User.id == user.id))
-        updated = result.scalar_one()
-        assert updated.last_reminder_at is not None
-        # SQLite strips tzinfo
-        ts = (
-            updated.last_reminder_at.replace(tzinfo=None)
-            if updated.last_reminder_at.tzinfo
-            else updated.last_reminder_at
-        )
-        assert ts >= before
+        # Second claim should return empty — last_reminder_at was just set
+        second = await UserRepo.claim_inactive_users(session, INACTIVITY_CUTOFF, COOLDOWN_CUTOFF)
+        assert len(second) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -223,7 +211,7 @@ class TestRemindEndpoint:
 
     @pytest.mark.asyncio
     async def test_valid_secret_sends_reminders(self) -> None:
-        """Valid secret → sends reminders to eligible users, returns count."""
+        """Valid secret → claims users, sends reminders, returns count."""
         import app.web.main as web_main
 
         mock_session = AsyncMock(spec=AsyncSession)
@@ -239,12 +227,10 @@ class TestRemindEndpoint:
         mock_bot.send_message = AsyncMock()
         web_main._bot = mock_bot
 
-        # Create mock eligible users
+        # Create mock claimed users
         user1 = MagicMock()
-        user1.id = uuid.uuid4()
         user1.tg_user_id = 111
         user2 = MagicMock()
-        user2.id = uuid.uuid4()
         user2.tg_user_id = 222
 
         try:
@@ -255,8 +241,7 @@ class TestRemindEndpoint:
                 mock_settings.return_value.TASKS_SECRET = "my-secret-12345"
                 mock_settings.return_value.REMINDER_INACTIVITY_HOURS = 6
                 mock_settings.return_value.REMINDER_COOLDOWN_HOURS = 6
-                mock_user_repo.get_inactive_users = AsyncMock(return_value=[user1, user2])
-                mock_user_repo.update_last_reminder = AsyncMock()
+                mock_user_repo.claim_inactive_users = AsyncMock(return_value=[user1, user2])
 
                 transport = ASGITransport(app=web_main.app)
                 async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -271,7 +256,6 @@ class TestRemindEndpoint:
             assert data["sent"] == 2
             assert data["failed"] == 0
             assert mock_bot.send_message.call_count == 2
-            assert mock_user_repo.update_last_reminder.call_count == 2
         finally:
             web_main._session_factory = original_factory
             web_main._bot = original_bot
@@ -298,10 +282,8 @@ class TestRemindEndpoint:
         web_main._bot = mock_bot
 
         user1 = MagicMock()
-        user1.id = uuid.uuid4()
         user1.tg_user_id = 111
         user2 = MagicMock()
-        user2.id = uuid.uuid4()
         user2.tg_user_id = 222
 
         try:
@@ -312,8 +294,7 @@ class TestRemindEndpoint:
                 mock_settings.return_value.TASKS_SECRET = "my-secret-12345"
                 mock_settings.return_value.REMINDER_INACTIVITY_HOURS = 6
                 mock_settings.return_value.REMINDER_COOLDOWN_HOURS = 6
-                mock_user_repo.get_inactive_users = AsyncMock(return_value=[user1, user2])
-                mock_user_repo.update_last_reminder = AsyncMock()
+                mock_user_repo.claim_inactive_users = AsyncMock(return_value=[user1, user2])
 
                 transport = ASGITransport(app=web_main.app)
                 async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -327,8 +308,6 @@ class TestRemindEndpoint:
             assert data["status"] == "ok"
             assert data["sent"] == 1
             assert data["failed"] == 1
-            # Only 1 update_last_reminder (for the successful send)
-            assert mock_user_repo.update_last_reminder.call_count == 1
         finally:
             web_main._session_factory = original_factory
             web_main._bot = original_bot
@@ -356,8 +335,7 @@ class TestRemindEndpoint:
                 mock_settings.return_value.TASKS_SECRET = "my-secret-12345"
                 mock_settings.return_value.REMINDER_INACTIVITY_HOURS = 6
                 mock_settings.return_value.REMINDER_COOLDOWN_HOURS = 6
-                mock_user_repo.get_inactive_users = AsyncMock(return_value=[])
-                mock_user_repo.update_last_reminder = AsyncMock()
+                mock_user_repo.claim_inactive_users = AsyncMock(return_value=[])
 
                 transport = ASGITransport(app=web_main.app)
                 async with AsyncClient(transport=transport, base_url="http://test") as client:
