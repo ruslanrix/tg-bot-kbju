@@ -15,9 +15,13 @@ from app.services.nutrition_ai import (
     MAX_PROTEIN_G,
     MAX_VOLUME_ML,
     MAX_WEIGHT_G,
+    SYSTEM_PROMPT,
     Ingredient,
     NutritionAIService,
     NutritionAnalysis,
+    _build_system_prompt,
+    _LANG_INSTRUCTIONS,
+    _SYSTEM_PROMPT_BASE,
     sanity_check,
 )
 
@@ -445,3 +449,104 @@ class TestSanityCheck:
             ],
         )
         assert sanity_check(a) is None
+
+
+# ---------------------------------------------------------------------------
+# Language-aware system prompt (Step 18, FEAT-13/D9)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildSystemPrompt:
+    """Verify _build_system_prompt injects language instructions."""
+
+    def test_en_prompt_contains_english_instruction(self):
+        prompt = _build_system_prompt("EN")
+        assert "Respond in English" in prompt
+        assert _SYSTEM_PROMPT_BASE in prompt
+
+    def test_ru_prompt_contains_russian_instruction(self):
+        prompt = _build_system_prompt("RU")
+        assert "русском" in prompt
+        assert _SYSTEM_PROMPT_BASE in prompt
+
+    def test_unknown_lang_falls_back_to_en(self):
+        prompt = _build_system_prompt("FR")
+        assert "Respond in English" in prompt
+
+    def test_none_lang_falls_back_to_en(self):
+        prompt = _build_system_prompt(None)  # type: ignore[arg-type]
+        assert "Respond in English" in prompt
+
+    def test_case_insensitive(self):
+        prompt_lower = _build_system_prompt("ru")
+        prompt_upper = _build_system_prompt("RU")
+        assert prompt_lower == prompt_upper
+
+    def test_backward_compat_constant(self):
+        """SYSTEM_PROMPT module-level constant matches EN build."""
+        assert SYSTEM_PROMPT == _build_system_prompt("EN")
+
+    def test_all_lang_instructions_appended(self):
+        """Each supported language has its instruction appended after the base."""
+        for lang, instruction in _LANG_INSTRUCTIONS.items():
+            prompt = _build_system_prompt(lang)
+            assert prompt.startswith(_SYSTEM_PROMPT_BASE)
+            assert instruction in prompt
+
+
+class TestLangPassedToOpenAI:
+    """Verify analyze_text / analyze_photo pass lang-specific prompt to OpenAI."""
+
+    async def test_analyze_text_en_uses_en_prompt(self):
+        client = _mock_parse_response(NutritionAnalysis(action="reject_unrecognized"))
+        svc = _make_service(client)
+        await svc.analyze_text("chicken", lang="EN")
+
+        call_args = client.beta.chat.completions.parse.call_args
+        system_msg = call_args.kwargs["messages"][0]["content"]
+        assert "Respond in English" in system_msg
+
+    async def test_analyze_text_ru_uses_ru_prompt(self):
+        client = _mock_parse_response(NutritionAnalysis(action="reject_unrecognized"))
+        svc = _make_service(client)
+        await svc.analyze_text("курица", lang="RU")
+
+        call_args = client.beta.chat.completions.parse.call_args
+        system_msg = call_args.kwargs["messages"][0]["content"]
+        assert "русском" in system_msg
+
+    async def test_analyze_text_default_lang_is_en(self):
+        client = _mock_parse_response(NutritionAnalysis(action="reject_unrecognized"))
+        svc = _make_service(client)
+        await svc.analyze_text("chicken")  # no lang kwarg
+
+        call_args = client.beta.chat.completions.parse.call_args
+        system_msg = call_args.kwargs["messages"][0]["content"]
+        assert "Respond in English" in system_msg
+
+    async def test_analyze_photo_ru_uses_ru_prompt(self):
+        client = _mock_parse_response(NutritionAnalysis(action="reject_unrecognized"))
+        svc = _make_service(client)
+        await svc.analyze_photo(b"\xff\xd8fake_jpeg", caption="борщ", lang="RU")
+
+        call_args = client.beta.chat.completions.parse.call_args
+        system_msg = call_args.kwargs["messages"][0]["content"]
+        assert "русском" in system_msg
+
+    async def test_analyze_photo_default_lang_is_en(self):
+        client = _mock_parse_response(NutritionAnalysis(action="reject_unrecognized"))
+        svc = _make_service(client)
+        await svc.analyze_photo(b"\xff\xd8fake_jpeg")
+
+        call_args = client.beta.chat.completions.parse.call_args
+        system_msg = call_args.kwargs["messages"][0]["content"]
+        assert "Respond in English" in system_msg
+
+    async def test_analyze_text_unknown_lang_uses_en(self):
+        client = _mock_parse_response(NutritionAnalysis(action="reject_unrecognized"))
+        svc = _make_service(client)
+        await svc.analyze_text("food", lang="FR")
+
+        call_args = client.beta.chat.completions.parse.call_args
+        system_msg = call_args.kwargs["messages"][0]["content"]
+        assert "Respond in English" in system_msg

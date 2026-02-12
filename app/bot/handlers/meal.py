@@ -137,7 +137,7 @@ async def handle_photo(message: Message, session: AsyncSession, bot: Bot) -> Non
 
     # Typing heartbeat + OpenAI call
     analysis = await _analyze_with_typing(
-        message, bot, lambda svc: _do_photo_analysis(svc, bot, photo.file_id, caption),
+        message, bot, lambda svc: _do_photo_analysis(svc, bot, photo.file_id, caption, lang=lang),
         proc_msg=proc_msg,
         lang=lang,
     )
@@ -151,7 +151,7 @@ async def handle_photo(message: Message, session: AsyncSession, bot: Bot) -> Non
 
 
 async def _do_photo_analysis(
-    svc: NutritionAIService, bot: Bot, file_id: str, caption: str
+    svc: NutritionAIService, bot: Bot, file_id: str, caption: str, *, lang: str = "EN"
 ) -> NutritionAnalysis:
     """Download photo and send to OpenAI."""
     file = await bot.get_file(file_id)
@@ -164,7 +164,7 @@ async def _do_photo_analysis(
     await bot.download_file(file.file_path, buf)
     photo_bytes = buf.getvalue()
 
-    return await svc.analyze_photo(photo_bytes, caption=caption or None)
+    return await svc.analyze_photo(photo_bytes, caption=caption or None, lang=lang)
 
 
 # ---------------------------------------------------------------------------
@@ -211,7 +211,7 @@ async def handle_text(message: Message, session: AsyncSession, bot: Bot, state: 
 
     # Typing heartbeat + OpenAI call
     analysis = await _analyze_with_typing(
-        message, bot, lambda svc: svc.analyze_text(message.text or ""),
+        message, bot, lambda svc: svc.analyze_text(message.text or "", lang=lang),
         proc_msg=proc_msg,
         lang=lang,
     )
@@ -658,7 +658,7 @@ async def _handle_edit_text(
 
     # OpenAI analysis (required per spec §3.7 — ingredients must be generated)
     analysis = await _analyze_with_typing(
-        message, bot, lambda svc: svc.analyze_text(message.text or ""),
+        message, bot, lambda svc: svc.analyze_text(message.text or "", lang=lang),
         proc_msg=proc_msg,
         lang=lang,
     )

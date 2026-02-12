@@ -127,7 +127,7 @@ def sanity_check(analysis: NutritionAnalysis) -> str | None:
 # System prompt (spec §6.2)
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """\
+_SYSTEM_PROMPT_BASE = """\
 You are a nutrition analysis assistant. Analyze the food described or shown \
 and return a structured JSON response.
 
@@ -155,6 +155,25 @@ volume_ml, items like soup may have both.
 the top level.
 """
 
+_LANG_INSTRUCTIONS: dict[str, str] = {
+    "EN": "13. Respond in English. All text fields (meal_name, user_message, ingredient names) must be in English.",
+    "RU": "13. Отвечай на русском языке. Все текстовые поля (meal_name, user_message, названия ингредиентов) должны быть на русском.",
+}
+
+
+def _build_system_prompt(lang: str = "EN") -> str:
+    """Build the system prompt with language instruction appended.
+
+    Unknown languages fall back to English.
+    """
+    lang_upper = (lang or "EN").upper()
+    instruction = _LANG_INSTRUCTIONS.get(lang_upper, _LANG_INSTRUCTIONS["EN"])
+    return f"{_SYSTEM_PROMPT_BASE}{instruction}\n"
+
+
+# Keep a public alias for backward compatibility in tests
+SYSTEM_PROMPT = _build_system_prompt("EN")
+
 # ---------------------------------------------------------------------------
 # Service
 # ---------------------------------------------------------------------------
@@ -179,17 +198,19 @@ class NutritionAIService:
         self._model = model
         self._timeout = timeout
 
-    async def analyze_text(self, text: str) -> NutritionAnalysis:
+    async def analyze_text(self, text: str, *, lang: str = "EN") -> NutritionAnalysis:
         """Analyze a text description of a meal.
 
         Args:
             text: User-provided food description.
+            lang: User language preference (``"EN"`` / ``"RU"``).
 
         Returns:
             Parsed ``NutritionAnalysis``.
         """
+        prompt = _build_system_prompt(lang)
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": prompt},
             {"role": "user", "content": text},
         ]
         return await self._call(messages)
@@ -198,16 +219,20 @@ class NutritionAIService:
         self,
         photo_bytes: bytes,
         caption: str | None = None,
+        *,
+        lang: str = "EN",
     ) -> NutritionAnalysis:
         """Analyze a photo of a meal (with optional caption).
 
         Args:
             photo_bytes: Raw image bytes (JPEG/PNG).
             caption: Optional text caption from the user.
+            lang: User language preference (``"EN"`` / ``"RU"``).
 
         Returns:
             Parsed ``NutritionAnalysis``.
         """
+        prompt = _build_system_prompt(lang)
         b64 = base64.b64encode(photo_bytes).decode()
         content: list[dict] = [
             {
@@ -219,7 +244,7 @@ class NutritionAIService:
             content.insert(0, {"type": "text", "text": caption})
 
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": prompt},
             {"role": "user", "content": content},
         ]
         return await self._call(messages)
