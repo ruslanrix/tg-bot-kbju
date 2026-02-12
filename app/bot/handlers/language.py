@@ -25,7 +25,10 @@ _LANG_LABELS: dict[str, str] = {
 
 @router.message(Command("language"))
 async def cmd_language(message: Message) -> None:
-    """Handle /language — show language picker."""
+    """Handle /language — show language picker.
+
+    Prompt is bilingual by design (shown before language is known).
+    """
     await message.answer(
         "Choose your language / Выберите язык:",
         reply_markup=language_keyboard(),
@@ -48,5 +51,7 @@ async def on_language_selected(callback: CallbackQuery, session: AsyncSession) -
 
     label = _LANG_LABELS[lang]
     await callback.message.edit_text(f"Language set to {label} ✅")  # type: ignore[union-attr]
-    await callback.message.answer("👇", reply_markup=main_keyboard())  # type: ignore[union-attr]
+    await callback.message.answer(  # type: ignore[union-attr]
+        "👇", reply_markup=main_keyboard(lang)
+    )
     await callback.answer()

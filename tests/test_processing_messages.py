@@ -18,14 +18,16 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.handlers.meal import (
-    MSG_PROCESSING_EDIT,
-    MSG_PROCESSING_NEW,
-    MSG_UNRECOGNIZED,
     _analyze_with_typing,
     _handle_analysis_result,
 )
 from app.db.models import MealEntry, User
+from app.i18n import t
 from app.services.nutrition_ai import NutritionAnalysis
+
+MSG_PROCESSING_NEW = t("msg_processing_new", "EN")
+MSG_PROCESSING_EDIT = t("msg_processing_edit", "EN")
+MSG_UNRECOGNIZED = t("msg_unrecognized", "EN")
 
 
 # ---------------------------------------------------------------------------

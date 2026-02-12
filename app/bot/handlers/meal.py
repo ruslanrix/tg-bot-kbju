@@ -22,9 +22,10 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.formatters import format_meal_saved, format_today_stats
-from app.bot.keyboards import main_keyboard, saved_actions_keyboard
+from app.bot.keyboards import all_main_button_texts, main_keyboard, saved_actions_keyboard
 from app.core.time import today_local, user_timezone
 from app.db.repos import MealRepo, UserRepo
+from app.i18n import t
 from app.reports.stats import today_stats
 from app.services.nutrition_ai import NutritionAIService, NutritionAnalysis, sanity_check
 from app.services.precheck import (
@@ -38,20 +39,6 @@ from app.services.rate_limit import ConcurrencyGuard, RateLimiter
 logger = logging.getLogger(__name__)
 
 router = Router(name="meal")
-
-# ---------------------------------------------------------------------------
-# Reject message for unrecognized food (spec §5.9)
-# ---------------------------------------------------------------------------
-
-MSG_UNRECOGNIZED = "I couldn't recognize the food. Please try sending it again."
-MSG_THROTTLE = "Too many requests. Please wait a bit and try again 🙂"
-MSG_SANITY_FAIL = "⚠️ The values look unrealistic. Please double-check and try again."
-MSG_EDIT_WINDOW_EXPIRED = "⏳ This meal can no longer be edited (older than {hours}h)."
-MSG_DELETE_WINDOW_EXPIRED = "⏳ This meal can no longer be deleted (older than {hours}h)."
-
-# Processing messages (spec D4/FEAT-06)
-MSG_PROCESSING_NEW = "🔄 Combobulating..."
-MSG_PROCESSING_EDIT = "🔄 Analysing again with your feedback..."
 
 # Module-level singletons (initialized in factory.py)
 rate_limiter: RateLimiter | None = None
@@ -79,20 +66,30 @@ class EditMealStates(StatesGroup):
 
 
 @router.message(Command("add"))
-async def cmd_add(message: Message) -> None:
+async def cmd_add(message: Message, session: AsyncSession) -> None:
     """Handle /add — prompt user to enter food."""
+    if message.from_user is None:
+        lang = "EN"
+    else:
+        user = await UserRepo.get_or_create(session, message.from_user.id)
+        lang = user.language
     await message.answer(
-        "What did you eat? Send me a text description or a 📸 photo.",
-        reply_markup=main_keyboard(),
+        t("add_prompt", lang),
+        reply_markup=main_keyboard(lang),
     )
 
 
-@router.message(lambda m: m.text == "✏️ Add Meal")
-async def btn_add_meal(message: Message) -> None:
-    """Handle ✏️ Add Meal reply keyboard button."""
+@router.message(lambda m: m.text in ("✏️ Add Meal", "✏️ Добавить"))
+async def btn_add_meal(message: Message, session: AsyncSession) -> None:
+    """Handle ✏️ Add Meal reply keyboard button (EN or RU label)."""
+    if message.from_user is None:
+        lang = "EN"
+    else:
+        user = await UserRepo.get_or_create(session, message.from_user.id)
+        lang = user.language
     await message.answer(
-        "What did you eat? Send me a text description or a 📸 photo.",
-        reply_markup=main_keyboard(),
+        t("add_prompt", lang),
+        reply_markup=main_keyboard(lang),
     )
 
 
@@ -106,6 +103,9 @@ async def handle_photo(message: Message, session: AsyncSession, bot: Bot) -> Non
     """Process a photo message as a meal input."""
     if message.from_user is None:
         return
+
+    user = await UserRepo.get_or_create(session, message.from_user.id)
+    lang = user.language
 
     # §5.6 — photo size guard: prefer largest variant that fits the limit.
     # Telegram provides multiple sizes; iterate from largest to smallest.
@@ -129,23 +129,24 @@ async def handle_photo(message: Message, session: AsyncSession, bot: Bot) -> Non
             return
 
     # Rate limit + concurrency
-    if not await _check_limits(message):
+    if not await _check_limits(message, lang):
         return
 
     # Send processing message (spec D4/FEAT-06)
-    proc_msg = await message.reply(MSG_PROCESSING_NEW)
+    proc_msg = await message.reply(t("msg_processing_new", lang))
 
     # Typing heartbeat + OpenAI call
     analysis = await _analyze_with_typing(
         message, bot, lambda svc: _do_photo_analysis(svc, bot, photo.file_id, caption),
         proc_msg=proc_msg,
+        lang=lang,
     )
     if analysis is None:
         return
 
     await _handle_analysis_result(
         message, session, analysis, source="photo",
-        photo_file_id=photo.file_id, proc_msg=proc_msg,
+        photo_file_id=photo.file_id, proc_msg=proc_msg, lang=lang,
     )
 
 
@@ -171,7 +172,8 @@ async def _do_photo_analysis(
 # ---------------------------------------------------------------------------
 
 # Texts that are reply keyboard buttons — handled elsewhere.
-_BUTTON_TEXTS = {"📊 Stats", "🎯 Goals", "☁️ Help", "🕘 History", "✏️ Add Meal"}
+# Collect from ALL locales to avoid treating localized buttons as meal input.
+_BUTTON_TEXTS: set[str] = all_main_button_texts()
 
 
 @router.message(F.text)
@@ -180,7 +182,7 @@ async def handle_text(message: Message, session: AsyncSession, bot: Bot, state: 
     if message.from_user is None or not message.text:
         return
 
-    # Skip button texts
+    # Skip button texts (both EN and RU)
     if message.text in _BUTTON_TEXTS:
         return
 
@@ -190,6 +192,9 @@ async def handle_text(message: Message, session: AsyncSession, bot: Bot, state: 
         await _handle_edit_text(message, session, bot, state)
         return
 
+    user = await UserRepo.get_or_create(session, message.from_user.id)
+    lang = user.language
+
     # §5.1 — message type gate (text is ok)
     # §5.2–5.5 — text checks
     text_result = check_text(message.text, has_photo=False)
@@ -198,23 +203,24 @@ async def handle_text(message: Message, session: AsyncSession, bot: Bot, state: 
         return
 
     # Rate limit + concurrency
-    if not await _check_limits(message):
+    if not await _check_limits(message, lang):
         return
 
     # Send processing message (spec D4/FEAT-06)
-    proc_msg = await message.reply(MSG_PROCESSING_NEW)
+    proc_msg = await message.reply(t("msg_processing_new", lang))
 
     # Typing heartbeat + OpenAI call
     analysis = await _analyze_with_typing(
         message, bot, lambda svc: svc.analyze_text(message.text or ""),
         proc_msg=proc_msg,
+        lang=lang,
     )
     if analysis is None:
         return
 
     await _handle_analysis_result(
         message, session, analysis, source="text",
-        original_text=message.text, proc_msg=proc_msg,
+        original_text=message.text, proc_msg=proc_msg, lang=lang,
     )
 
 
@@ -235,25 +241,26 @@ async def handle_unsupported(message: Message) -> None:
 # Legacy draft callback fallbacks (backward compat after draft removal)
 # ---------------------------------------------------------------------------
 
-_DRAFT_EXPIRED_MSG = "This draft has expired. Please send your meal again."
-
 
 @router.callback_query(F.data.startswith("draft_save:"))
-async def on_legacy_draft_save(callback: CallbackQuery) -> None:
+async def on_legacy_draft_save(callback: CallbackQuery, session: AsyncSession) -> None:
     """Handle legacy draft Save buttons from pre-deploy messages."""
-    await callback.answer(_DRAFT_EXPIRED_MSG, show_alert=True)
+    lang = await _get_lang(callback, session)
+    await callback.answer(t("draft_expired", lang), show_alert=True)
 
 
 @router.callback_query(F.data.startswith("draft_edit:"))
-async def on_legacy_draft_edit(callback: CallbackQuery) -> None:
+async def on_legacy_draft_edit(callback: CallbackQuery, session: AsyncSession) -> None:
     """Handle legacy draft Edit buttons from pre-deploy messages."""
-    await callback.answer(_DRAFT_EXPIRED_MSG, show_alert=True)
+    lang = await _get_lang(callback, session)
+    await callback.answer(t("draft_expired", lang), show_alert=True)
 
 
 @router.callback_query(F.data.startswith("draft_delete:"))
-async def on_legacy_draft_delete(callback: CallbackQuery) -> None:
+async def on_legacy_draft_delete(callback: CallbackQuery, session: AsyncSession) -> None:
     """Handle legacy draft Delete buttons from pre-deploy messages."""
-    await callback.answer(_DRAFT_EXPIRED_MSG, show_alert=True)
+    lang = await _get_lang(callback, session)
+    await callback.answer(t("draft_expired", lang), show_alert=True)
 
 
 # ---------------------------------------------------------------------------
@@ -271,20 +278,21 @@ async def on_saved_edit(callback: CallbackQuery, session: AsyncSession, state: F
     try:
         meal_uuid = uuid.UUID(meal_id_str)
     except ValueError:
-        await callback.answer("Meal not found.", show_alert=True)
+        await callback.answer(t("meal_not_found", "EN"), show_alert=True)
         return
 
     # Edit window guard (spec D6/FEAT-08)
     user = await UserRepo.get_or_create(session, callback.from_user.id)
+    lang = user.language
     meal = await MealRepo.get_by_id(session, meal_uuid, user.id)
     if meal is None:
-        await callback.answer("Meal not found.", show_alert=True)
+        await callback.answer(t("meal_not_found", lang), show_alert=True)
         return
 
     age = datetime.now(timezone.utc) - meal.consumed_at_utc
     if age.total_seconds() > edit_window_hours * 3600:
         await callback.answer(
-            MSG_EDIT_WINDOW_EXPIRED.format(hours=edit_window_hours),
+            t("msg_edit_window_expired", lang).format(hours=edit_window_hours),
             show_alert=True,
         )
         return
@@ -292,7 +300,9 @@ async def on_saved_edit(callback: CallbackQuery, session: AsyncSession, state: F
     await state.set_state(EditMealStates.waiting_for_text)
     await state.update_data(edit_meal_id=meal_id_str)
 
-    await callback.message.edit_text("Send corrected text for this meal:")  # type: ignore[union-attr]
+    await callback.message.edit_text(  # type: ignore[union-attr]
+        t("edit_send_corrected", lang)
+    )
     await callback.answer()
 
 
@@ -306,38 +316,41 @@ async def on_saved_delete(callback: CallbackQuery, session: AsyncSession) -> Non
     try:
         meal_uuid = uuid.UUID(meal_id_str)
     except ValueError:
-        await callback.answer("Meal not found.", show_alert=True)
+        await callback.answer(t("meal_not_found", "EN"), show_alert=True)
         return
 
     user = await UserRepo.get_or_create(session, callback.from_user.id)
+    lang = user.language
     meal = await MealRepo.get_by_id(session, meal_uuid, user.id)
     if meal is None:
-        await callback.answer("Meal not found.", show_alert=True)
+        await callback.answer(t("meal_not_found", lang), show_alert=True)
         return
 
     # Delete window guard (spec D6/D7/FEAT-09)
     age = datetime.now(timezone.utc) - meal.consumed_at_utc
     if age.total_seconds() > delete_window_hours * 3600:
         await callback.answer(
-            MSG_DELETE_WINDOW_EXPIRED.format(hours=delete_window_hours),
+            t("msg_delete_window_expired", lang).format(hours=delete_window_hours),
             show_alert=True,
         )
         return
 
     deleted = await MealRepo.soft_delete(session, meal_uuid, user.id)
     if not deleted:
-        await callback.answer("Meal not found.", show_alert=True)
+        await callback.answer(t("meal_not_found", lang), show_alert=True)
         return
 
     tz = user_timezone(user.tz_mode, user.tz_name, user.tz_offset_minutes)
     local_d = today_local(tz)
     stats = await today_stats(session, user.id, local_d)
-    stats_text = format_today_stats(stats)
+    stats_text = format_today_stats(stats, lang)
 
     await callback.message.edit_text(  # type: ignore[union-attr]
-        f"🗑️ Deleted.\n\n{stats_text}"
+        f"{t('deleted_label', lang)}\n\n{stats_text}"
     )
-    await callback.message.answer("👇", reply_markup=main_keyboard())  # type: ignore[union-attr]
+    await callback.message.answer(  # type: ignore[union-attr]
+        t("nav_arrow", lang), reply_markup=main_keyboard(lang)
+    )
     await callback.answer()
 
 
@@ -356,38 +369,41 @@ async def on_history_delete(callback: CallbackQuery, session: AsyncSession) -> N
     try:
         meal_uuid = uuid.UUID(meal_id_str)
     except ValueError:
-        await callback.answer("Meal not found.", show_alert=True)
+        await callback.answer(t("meal_not_found", "EN"), show_alert=True)
         return
 
     user = await UserRepo.get_or_create(session, callback.from_user.id)
+    lang = user.language
     meal = await MealRepo.get_by_id(session, meal_uuid, user.id)
     if meal is None:
-        await callback.answer("Meal not found.", show_alert=True)
+        await callback.answer(t("meal_not_found", lang), show_alert=True)
         return
 
     # Delete window guard (spec D6/D7/FEAT-09)
     age = datetime.now(timezone.utc) - meal.consumed_at_utc
     if age.total_seconds() > delete_window_hours * 3600:
         await callback.answer(
-            MSG_DELETE_WINDOW_EXPIRED.format(hours=delete_window_hours),
+            t("msg_delete_window_expired", lang).format(hours=delete_window_hours),
             show_alert=True,
         )
         return
 
     deleted = await MealRepo.soft_delete(session, meal_uuid, user.id)
     if not deleted:
-        await callback.answer("Meal not found.", show_alert=True)
+        await callback.answer(t("meal_not_found", lang), show_alert=True)
         return
 
     tz = user_timezone(user.tz_mode, user.tz_name, user.tz_offset_minutes)
     local_d = today_local(tz)
     stats = await today_stats(session, user.id, local_d)
-    stats_text = format_today_stats(stats)
+    stats_text = format_today_stats(stats, lang)
 
     await callback.message.edit_text(  # type: ignore[union-attr]
-        f"🗑️ Deleted.\n\n{stats_text}"
+        f"{t('deleted_label', lang)}\n\n{stats_text}"
     )
-    await callback.message.answer("👇", reply_markup=main_keyboard())  # type: ignore[union-attr]
+    await callback.message.answer(  # type: ignore[union-attr]
+        t("nav_arrow", lang), reply_markup=main_keyboard(lang)
+    )
     await callback.answer()
 
 
@@ -396,14 +412,22 @@ async def on_history_delete(callback: CallbackQuery, session: AsyncSession) -> N
 # ---------------------------------------------------------------------------
 
 
-async def _check_limits(message: Message) -> bool:
+async def _get_lang(callback: CallbackQuery, session: AsyncSession) -> str:
+    """Resolve user language from a callback query."""
+    if callback.from_user is None:
+        return "EN"
+    user = await UserRepo.get_or_create(session, callback.from_user.id)
+    return user.language
+
+
+async def _check_limits(message: Message, lang: str = "EN") -> bool:
     """Check rate limit and concurrency guard. Reply if exceeded."""
     if message.from_user is None:
         return False
     uid = message.from_user.id
 
     if rate_limiter and not rate_limiter.check(uid):
-        await message.reply(MSG_THROTTLE)
+        await message.reply(t("msg_throttle", lang))
         return False
 
     return True
@@ -415,6 +439,7 @@ async def _analyze_with_typing(
     analyze_fn: Any,
     *,
     proc_msg: Message | None = None,
+    lang: str = "EN",
 ) -> NutritionAnalysis | None:
     """Run OpenAI analysis with typing heartbeat and concurrency guard.
 
@@ -430,7 +455,7 @@ async def _analyze_with_typing(
             await message.reply(text)
 
     if message.from_user is None or ai_service is None:
-        await _reply_or_edit(MSG_UNRECOGNIZED)
+        await _reply_or_edit(t("msg_unrecognized", lang))
         return None
 
     uid = message.from_user.id
@@ -439,7 +464,7 @@ async def _analyze_with_typing(
     if concurrency_guard:
         async with concurrency_guard(uid) as ctx:
             if not ctx.acquired:
-                await _reply_or_edit(MSG_THROTTLE)
+                await _reply_or_edit(t("msg_throttle", lang))
                 return None
             return await _run_with_typing(message, bot, analyze_fn)
     else:
@@ -486,6 +511,7 @@ async def _handle_analysis_result(
     photo_file_id: str | None = None,
     edit_meal_id: uuid.UUID | None = None,
     proc_msg: Message | None = None,
+    lang: str = "EN",
 ) -> None:
     """Handle an OpenAI analysis result — reject or save immediately.
 
@@ -504,17 +530,17 @@ async def _handle_analysis_result(
 
     # Reject actions
     if analysis.action == "reject_unrecognized":
-        await _respond(MSG_UNRECOGNIZED)
+        await _respond(t("msg_unrecognized", lang))
         return
     if analysis.action.startswith("reject_"):
-        await _respond(analysis.user_message or MSG_UNRECOGNIZED)
+        await _respond(analysis.user_message or t("msg_unrecognized", lang))
         return
 
     # Sanity check (spec D5/FEAT-07) — reject absurd values
     sanity_error = sanity_check(analysis)
     if sanity_error is not None:
         logger.warning("Sanity check failed: %s", sanity_error)
-        await _respond(MSG_SANITY_FAIL)
+        await _respond(t("msg_sanity_fail", lang))
         return
 
     # action == "save" → save to DB immediately (no draft)
@@ -544,7 +570,7 @@ async def _handle_analysis_result(
     else:
         # Idempotency check
         if await MealRepo.exists_by_message(session, message.chat.id, message.message_id):
-            await _respond("Already saved.")
+            await _respond(t("already_saved", lang))
             return
 
         # Create new meal
@@ -574,13 +600,13 @@ async def _handle_analysis_result(
         meal_id_str = str(meal.id)
 
     # Show saved message + Today's Stats + Edit/Delete keyboard
-    saved_text = format_meal_saved(analysis)
+    saved_text = format_meal_saved(analysis, lang)
     stats = await today_stats(session, user.id, local_d)
-    stats_text = format_today_stats(stats)
+    stats_text = format_today_stats(stats, lang)
 
     await _respond(
         f"{saved_text}\n\n{stats_text}",
-        reply_markup=saved_actions_keyboard(meal_id_str),
+        reply_markup=saved_actions_keyboard(meal_id_str, lang),
     )
 
 
@@ -597,16 +623,20 @@ async def _handle_edit_text(
 
     await state.clear()
 
+    user = await UserRepo.get_or_create(session, message.from_user.id)
+    lang = user.language
+
     # Re-check edit window (P1: user may have waited after entering FSM)
     if edit_meal_id is not None:
-        user = await UserRepo.get_or_create(session, message.from_user.id)
         meal = await MealRepo.get_by_id(session, edit_meal_id, user.id)
         if meal is None:
-            await message.reply("Meal not found.")
+            await message.reply(t("meal_not_found", lang))
             return
         age = datetime.now(timezone.utc) - meal.consumed_at_utc
         if age.total_seconds() > edit_window_hours * 3600:
-            await message.reply(MSG_EDIT_WINDOW_EXPIRED.format(hours=edit_window_hours))
+            await message.reply(
+                t("msg_edit_window_expired", lang).format(hours=edit_window_hours)
+            )
             return
 
     # Precheck
@@ -616,16 +646,17 @@ async def _handle_edit_text(
         return
 
     # Rate limit
-    if not await _check_limits(message):
+    if not await _check_limits(message, lang):
         return
 
     # Send edit-specific processing message (spec D4/FEAT-06)
-    proc_msg = await message.reply(MSG_PROCESSING_EDIT)
+    proc_msg = await message.reply(t("msg_processing_edit", lang))
 
     # OpenAI analysis (required per spec §3.7 — ingredients must be generated)
     analysis = await _analyze_with_typing(
         message, bot, lambda svc: svc.analyze_text(message.text or ""),
         proc_msg=proc_msg,
+        lang=lang,
     )
     if analysis is None:
         return
@@ -638,4 +669,5 @@ async def _handle_edit_text(
         original_text=message.text,
         edit_meal_id=edit_meal_id,
         proc_msg=proc_msg,
+        lang=lang,
     )

@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.bot.keyboards import timezone_city_keyboard
 from app.db.repos import UserRepo
+from app.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -177,16 +178,9 @@ class ActivityMiddleware(BaseMiddleware):
 # Timezone onboarding gate (spec D2 / FEAT-03)
 # ---------------------------------------------------------------------------
 
-# Onboarding messages shown to users who haven't set a timezone yet.
-ONBOARDING_TEXT_A = (
-    "Hi. Every time you eat, send me a 📸 pic of your meal (or drink). "
-    "I'll guess the macros, calories, caffeine and ingredients to help you "
-    "keep track of your diet."
-)
-ONBOARDING_TEXT_B = (
-    "🌍 First I need to know your time zone so I can divide up your meals "
-    "into days correctly. You can change it later."
-)
+# Legacy aliases kept for backward compatibility with tests.
+ONBOARDING_TEXT_A = t("onboarding_a", "EN")
+ONBOARDING_TEXT_B = t("onboarding_b", "EN")
 
 # Callback data prefixes that the timezone flow uses — always allowed.
 _TZ_CALLBACK_PREFIXES = ("tz_city:", "tz_offset:", "tz_city_menu", "tz_offset_menu", "lang:")
@@ -241,7 +235,7 @@ class TimezoneGateMiddleware(BaseMiddleware):
             return await handler(event, data)
 
         # --- Timezone NOT set: intercept ---
-        await self._send_onboarding(event)
+        await self._send_onboarding(event, user.language)
         return None  # Do not call the downstream handler.
 
     # ------------------------------------------------------------------
@@ -282,21 +276,21 @@ class TimezoneGateMiddleware(BaseMiddleware):
         return False
 
     @staticmethod
-    async def _send_onboarding(update: Update) -> None:
+    async def _send_onboarding(update: Update, lang: str = "EN") -> None:
         """Send the onboarding prompt to set timezone."""
         if update.message:
-            await update.message.answer(ONBOARDING_TEXT_A)
+            await update.message.answer(t("onboarding_a", lang))
             await update.message.answer(
-                ONBOARDING_TEXT_B,
-                reply_markup=timezone_city_keyboard(),
+                t("onboarding_b", lang),
+                reply_markup=timezone_city_keyboard(lang),
             )
         elif update.callback_query:
             # For non-timezone callbacks, answer the callback and prompt.
             await update.callback_query.answer(
-                "Please set your timezone first.", show_alert=True
+                t("onboarding_tz_alert", lang), show_alert=True
             )
             if update.callback_query.message:
                 await update.callback_query.message.answer(  # type: ignore[union-attr]
-                    ONBOARDING_TEXT_B,
-                    reply_markup=timezone_city_keyboard(),
+                    t("onboarding_b", lang),
+                    reply_markup=timezone_city_keyboard(lang),
                 )

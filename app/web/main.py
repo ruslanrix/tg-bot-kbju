@@ -29,6 +29,7 @@ from app.bot.factory import create_bot, create_dispatcher
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.db.repos import MealRepo, UserRepo
+from app.i18n import t as tr
 
 logger = logging.getLogger(__name__)
 
@@ -212,9 +213,6 @@ async def task_purge(
     return {"status": "ok", "deleted_count": count}
 
 
-REMINDER_TEXT = "Hey! You haven't logged any meals in a while. Send me a photo or describe what you ate 🍽️"
-
-
 @app.post("/tasks/remind")
 async def task_remind(
     x_tasks_secret: str | None = Header(default=None),
@@ -252,7 +250,9 @@ async def task_remind(
     failed = 0
     for user in users:
         try:
-            await _bot.send_message(chat_id=user.tg_user_id, text=REMINDER_TEXT)
+            await _bot.send_message(
+                chat_id=user.tg_user_id, text=tr("reminder_text", user.language),
+            )
             sent += 1
         except Exception:
             failed += 1
