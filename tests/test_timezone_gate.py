@@ -123,13 +123,24 @@ class TestIsAlwaysAllowed:
         update = _make_message_update(text="/start some_payload")
         assert TimezoneGateMiddleware._is_always_allowed(update) is True
 
-    def test_start_with_botname_allowed(self) -> None:
+    def test_start_with_botname_blocked(self) -> None:
+        """'/start@mybot' should NOT bypass — strict match mirrors Command() defaults."""
         update = _make_message_update(text="/start@mybot")
-        assert TimezoneGateMiddleware._is_always_allowed(update) is True
+        assert TimezoneGateMiddleware._is_always_allowed(update) is False
+
+    def test_start_uppercase_blocked(self) -> None:
+        """'/START' should NOT bypass — strict case match."""
+        update = _make_message_update(text="/START")
+        assert TimezoneGateMiddleware._is_always_allowed(update) is False
 
     def test_help_command_allowed(self) -> None:
         update = _make_message_update(text="/help")
         assert TimezoneGateMiddleware._is_always_allowed(update) is True
+
+    def test_help_uppercase_blocked(self) -> None:
+        """'/HELP' should NOT bypass — strict case match."""
+        update = _make_message_update(text="/HELP")
+        assert TimezoneGateMiddleware._is_always_allowed(update) is False
 
     def test_other_command_blocked(self) -> None:
         update = _make_message_update(text="/stats")

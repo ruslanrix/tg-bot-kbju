@@ -198,12 +198,17 @@ class TimezoneGateMiddleware(BaseMiddleware):
     def _is_always_allowed(update: Update) -> bool:
         """Return True if this update should bypass the timezone gate."""
         # Allow /start and /help commands.
+        # Match strictly: no case folding, no @bot suffix tolerance.
+        # This mirrors aiogram's Command() defaults (ignore_case=False,
+        # ignore_mention=False) so we don't accidentally let variants
+        # like /START slip through to the catch-all meal handler.
         if update.message and update.message.text:
             text = update.message.text.strip()
-            # Handle "/start payload" and "/help@botname"
-            cmd = text.split()[0].split("@")[0].lower() if text.startswith("/") else ""
-            if cmd in _ALLOWED_COMMANDS:
-                return True
+            if text.startswith("/"):
+                # Extract bare command: "/start payload" → "/start"
+                cmd = text.split()[0]
+                if cmd in _ALLOWED_COMMANDS:
+                    return True
 
         # Allow timezone-related callbacks.
         if update.callback_query and update.callback_query.data:
