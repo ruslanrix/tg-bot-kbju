@@ -11,8 +11,11 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.formatters import format_today_stats
 from app.bot.keyboards import main_keyboard, timezone_city_keyboard, timezone_offset_keyboard
+from app.core.time import today_local, user_timezone
 from app.db.repos import UserRepo
+from app.reports.stats import today_stats
 
 router = Router(name="timezone")
 
@@ -61,8 +64,19 @@ async def on_city_selected(callback: CallbackQuery, session: AsyncSession) -> No
         tz_offset_minutes=None,
     )
 
-    await callback.message.edit_text(f"Timezone set to {iana} ✅")  # type: ignore[union-attr]
-    await callback.message.answer("👇", reply_markup=main_keyboard())  # type: ignore[union-attr]
+    # Spec D3/FEAT-04: exact confirmation message.
+    await callback.message.edit_text(  # type: ignore[union-attr]
+        f"✅ Time zone saved: {iana}. You can change it later."
+    )
+
+    # Show Today's Stats (zeros for new users) + main keyboard.
+    tz = user_timezone("city", iana, None)
+    local_today = today_local(tz)
+    stats = await today_stats(session, user.id, local_today)
+    stats_text = format_today_stats(stats)
+    await callback.message.answer(  # type: ignore[union-attr]
+        stats_text, reply_markup=main_keyboard()
+    )
     await callback.answer()
 
 
@@ -89,8 +103,18 @@ async def on_offset_selected(callback: CallbackQuery, session: AsyncSession) -> 
         tz_offset_minutes=minutes,
     )
 
+    # Spec D3/FEAT-04: exact confirmation message.
+    tz_label = f"UTC{sign}{hours}"
     await callback.message.edit_text(  # type: ignore[union-attr]
-        f"Timezone set to UTC{sign}{hours} ✅"
+        f"✅ Time zone saved: {tz_label}. You can change it later."
     )
-    await callback.message.answer("👇", reply_markup=main_keyboard())  # type: ignore[union-attr]
+
+    # Show Today's Stats (zeros for new users) + main keyboard.
+    tz = user_timezone("offset", None, minutes)
+    local_today = today_local(tz)
+    stats = await today_stats(session, user.id, local_today)
+    stats_text = format_today_stats(stats)
+    await callback.message.answer(  # type: ignore[union-attr]
+        stats_text, reply_markup=main_keyboard()
+    )
     await callback.answer()
