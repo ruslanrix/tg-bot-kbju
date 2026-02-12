@@ -175,3 +175,20 @@ def help_change_tz_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="🕒 Change Time Zone", callback_data="tz_city_menu")],
         ],
     )
+
+
+# ---------------------------------------------------------------------------
+# Language selection (FEAT-13)
+# ---------------------------------------------------------------------------
+
+
+def language_keyboard() -> InlineKeyboardMarkup:
+    """Inline keyboard for EN/RU language selection."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🇬🇧 English", callback_data="lang:EN"),
+                InlineKeyboardButton(text="🇷🇺 Русский", callback_data="lang:RU"),
+            ],
+        ],
+    )

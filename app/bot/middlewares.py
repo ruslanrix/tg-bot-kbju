@@ -189,10 +189,10 @@ ONBOARDING_TEXT_B = (
 )
 
 # Callback data prefixes that the timezone flow uses — always allowed.
-_TZ_CALLBACK_PREFIXES = ("tz_city:", "tz_offset:", "tz_city_menu", "tz_offset_menu")
+_TZ_CALLBACK_PREFIXES = ("tz_city:", "tz_offset:", "tz_city_menu", "tz_offset_menu", "lang:")
 
 # Commands that are allowed even without timezone.
-_ALLOWED_COMMANDS = {"/start", "/help", "/admin_ping", "/admin_stats", "/admin_limits"}
+_ALLOWED_COMMANDS = {"/start", "/help", "/language", "/admin_ping", "/admin_stats", "/admin_limits"}
 
 
 class TimezoneGateMiddleware(BaseMiddleware):

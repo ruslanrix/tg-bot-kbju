@@ -82,6 +82,26 @@ class UserRepo:
         return result.scalar_one()
 
     @staticmethod
+    async def update_language(
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        language: str,
+    ) -> User:
+        """Set the user's UI language (e.g. ``"EN"``, ``"RU"``).
+
+        Returns:
+            The updated ``User``.
+        """
+        stmt = (
+            update(User)
+            .where(User.id == user_id)
+            .values(language=language.upper())
+            .returning(User)
+        )
+        result = await session.execute(stmt)
+        return result.scalar_one()
+
+    @staticmethod
     async def touch_activity(session: AsyncSession, tg_user_id: int) -> None:
         """Update ``last_activity_at`` to now for a given Telegram user.
 
