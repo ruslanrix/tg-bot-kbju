@@ -8,9 +8,17 @@ import pytest
 from openai import APITimeoutError
 
 from app.services.nutrition_ai import (
+    MAX_CAFFEINE_MG,
+    MAX_CALORIES_KCAL,
+    MAX_CARBS_G,
+    MAX_FAT_G,
+    MAX_PROTEIN_G,
+    MAX_VOLUME_ML,
+    MAX_WEIGHT_G,
     Ingredient,
     NutritionAIService,
     NutritionAnalysis,
+    sanity_check,
 )
 
 
@@ -250,3 +258,137 @@ class TestNutritionAnalysisModel:
             fat_g=0.0,
         )
         assert m.calories_kcal == 0
+
+
+# ---------------------------------------------------------------------------
+# Ingredient per-item weight/volume (Step 08, D5/FEAT-07)
+# ---------------------------------------------------------------------------
+
+
+class TestIngredientWeightVolume:
+    def test_ingredient_with_weight(self):
+        ing = Ingredient(name="rice", amount="150g", calories_kcal=200, weight_g=150)
+        assert ing.weight_g == 150
+        assert ing.volume_ml is None
+
+    def test_ingredient_with_volume(self):
+        ing = Ingredient(name="milk", amount="200ml", calories_kcal=90, volume_ml=200)
+        assert ing.volume_ml == 200
+        assert ing.weight_g is None
+
+    def test_ingredient_with_both(self):
+        """Soup ingredient may have both weight and volume."""
+        ing = Ingredient(
+            name="soup", amount="300ml", calories_kcal=120,
+            weight_g=320, volume_ml=300,
+        )
+        assert ing.weight_g == 320
+        assert ing.volume_ml == 300
+
+    def test_ingredient_defaults_none(self):
+        """Without explicit weight/volume, defaults to None (backward compat)."""
+        ing = Ingredient(name="chicken", amount="100g", calories_kcal=165)
+        assert ing.weight_g is None
+        assert ing.volume_ml is None
+
+    def test_ingredient_negative_weight_rejected(self):
+        with pytest.raises(Exception):
+            Ingredient(name="x", amount="x", calories_kcal=0, weight_g=-1)
+
+    def test_ingredient_negative_volume_rejected(self):
+        with pytest.raises(Exception):
+            Ingredient(name="x", amount="x", calories_kcal=0, volume_ml=-5)
+
+    def test_ingredient_zero_weight_valid(self):
+        ing = Ingredient(name="spice", amount="pinch", calories_kcal=0, weight_g=0)
+        assert ing.weight_g == 0
+
+    def test_ingredient_serialization_includes_fields(self):
+        """model_dump() includes weight_g and volume_ml for JSONB storage."""
+        ing = Ingredient(
+            name="rice", amount="150g", calories_kcal=200,
+            weight_g=150, volume_ml=None,
+        )
+        d = ing.model_dump()
+        assert "weight_g" in d
+        assert "volume_ml" in d
+        assert d["weight_g"] == 150
+        assert d["volume_ml"] is None
+
+
+# ---------------------------------------------------------------------------
+# Sanity checks (Step 08, D5/FEAT-07)
+# ---------------------------------------------------------------------------
+
+
+class TestSanityCheck:
+    def test_normal_values_pass(self):
+        a = NutritionAnalysis(
+            action="save", calories_kcal=500, protein_g=30.0,
+            carbs_g=50.0, fat_g=20.0, weight_g=300,
+        )
+        assert sanity_check(a) is None
+
+    def test_reject_actions_always_pass(self):
+        a = NutritionAnalysis(action="reject_not_food")
+        assert sanity_check(a) is None
+
+    def test_absurd_calories_rejected(self):
+        a = NutritionAnalysis(action="save", calories_kcal=MAX_CALORIES_KCAL + 1)
+        result = sanity_check(a)
+        assert result is not None
+        assert "Calories" in result
+
+    def test_absurd_protein_rejected(self):
+        a = NutritionAnalysis(action="save", protein_g=MAX_PROTEIN_G + 1)
+        result = sanity_check(a)
+        assert result is not None
+        assert "Protein" in result
+
+    def test_absurd_carbs_rejected(self):
+        a = NutritionAnalysis(action="save", carbs_g=MAX_CARBS_G + 1)
+        result = sanity_check(a)
+        assert result is not None
+        assert "Carbs" in result
+
+    def test_absurd_fat_rejected(self):
+        a = NutritionAnalysis(action="save", fat_g=MAX_FAT_G + 1)
+        result = sanity_check(a)
+        assert result is not None
+        assert "Fat" in result
+
+    def test_absurd_weight_rejected(self):
+        a = NutritionAnalysis(action="save", weight_g=MAX_WEIGHT_G + 1)
+        result = sanity_check(a)
+        assert result is not None
+        assert "Weight" in result
+
+    def test_absurd_volume_rejected(self):
+        a = NutritionAnalysis(action="save", volume_ml=MAX_VOLUME_ML + 1)
+        result = sanity_check(a)
+        assert result is not None
+        assert "Volume" in result
+
+    def test_absurd_caffeine_rejected(self):
+        a = NutritionAnalysis(action="save", caffeine_mg=MAX_CAFFEINE_MG + 1)
+        result = sanity_check(a)
+        assert result is not None
+        assert "Caffeine" in result
+
+    def test_exactly_at_limit_passes(self):
+        a = NutritionAnalysis(
+            action="save",
+            calories_kcal=MAX_CALORIES_KCAL,
+            protein_g=MAX_PROTEIN_G,
+            carbs_g=MAX_CARBS_G,
+            fat_g=MAX_FAT_G,
+            weight_g=MAX_WEIGHT_G,
+            volume_ml=MAX_VOLUME_ML,
+            caffeine_mg=MAX_CAFFEINE_MG,
+        )
+        assert sanity_check(a) is None
+
+    def test_none_values_pass(self):
+        """None fields should not trigger sanity failure."""
+        a = NutritionAnalysis(action="save", calories_kcal=200)
+        assert sanity_check(a) is None

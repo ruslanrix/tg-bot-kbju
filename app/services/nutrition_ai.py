@@ -36,6 +36,8 @@ class Ingredient(BaseModel):
     name: str
     amount: str
     calories_kcal: int = Field(ge=0)
+    weight_g: int | None = Field(default=None, ge=0)
+    volume_ml: int | None = Field(default=None, ge=0)
 
 
 class NutritionAnalysis(BaseModel):
@@ -64,6 +66,47 @@ class NutritionAnalysis(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Sanity check limits (spec D5/FEAT-07)
+# ---------------------------------------------------------------------------
+
+# Maximum reasonable single-meal values — anything above is rejected as absurd.
+MAX_CALORIES_KCAL = 5000
+MAX_PROTEIN_G = 500.0
+MAX_CARBS_G = 800.0
+MAX_FAT_G = 400.0
+MAX_WEIGHT_G = 10_000
+MAX_VOLUME_ML = 5_000
+MAX_CAFFEINE_MG = 2_000
+
+
+def sanity_check(analysis: NutritionAnalysis) -> str | None:
+    """Validate that a ``save`` analysis has reasonable values.
+
+    Returns ``None`` when values are plausible, or an error string
+    describing the first absurd value found.  Reject actions are
+    always considered valid (no nutrition data to check).
+    """
+    if analysis.action != "save":
+        return None
+
+    checks: list[tuple[str, float | int | None, float | int]] = [
+        ("Calories", analysis.calories_kcal, MAX_CALORIES_KCAL),
+        ("Protein", analysis.protein_g, MAX_PROTEIN_G),
+        ("Carbs", analysis.carbs_g, MAX_CARBS_G),
+        ("Fat", analysis.fat_g, MAX_FAT_G),
+        ("Weight", analysis.weight_g, MAX_WEIGHT_G),
+        ("Volume", analysis.volume_ml, MAX_VOLUME_ML),
+        ("Caffeine", analysis.caffeine_mg, MAX_CAFFEINE_MG),
+    ]
+
+    for label, value, limit in checks:
+        if value is not None and value > limit:
+            return f"{label} value ({value}) exceeds maximum ({limit})."
+
+    return None
+
+
+# ---------------------------------------------------------------------------
 # System prompt (spec §6.2)
 # ---------------------------------------------------------------------------
 
@@ -87,6 +130,12 @@ trust and pass them through — do NOT overwrite. Still generate meal_name \
 and likely_ingredients.
 9. Always generate likely_ingredients when action="save" — this is required.
 10. confidence should be 0.0–1.0 reflecting your certainty.
+11. For each ingredient in likely_ingredients, provide weight_g (estimated grams) \
+and/or volume_ml (estimated millilitres) when applicable. Estimate serving sizes \
+even when the user does not specify them. Solid foods get weight_g, liquids get \
+volume_ml, items like soup may have both.
+12. Always provide total weight_g for solid meals and volume_ml for drinks/soups at \
+the top level.
 """
 
 # ---------------------------------------------------------------------------

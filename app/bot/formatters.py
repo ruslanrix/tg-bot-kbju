@@ -8,20 +8,27 @@ from __future__ import annotations
 from datetime import date
 
 from app.reports.stats import DayStats, WeekAvgStats
-from app.services.nutrition_ai import NutritionAnalysis
+from app.services.nutrition_ai import Ingredient, NutritionAnalysis
 
 
 # ---------------------------------------------------------------------------
-# Meal saved / draft message (spec §3.4)
+# Meal saved / draft message (spec §3.4, D5/FEAT-07)
 # ---------------------------------------------------------------------------
 
 
-def format_meal_saved(analysis: NutritionAnalysis) -> str:
-    """Format the meal summary shown after saving (spec §3.4).
+def _format_ingredient_line(ing: Ingredient) -> str:
+    """Build a single ingredient bullet, including weight/volume when present."""
+    parts = [ing.amount, f"{ing.calories_kcal}kcal"]
+    if ing.weight_g is not None:
+        parts.append(f"{ing.weight_g}g")
+    if ing.volume_ml is not None:
+        parts.append(f"{ing.volume_ml}ml")
+    return f"• {ing.name} ({', '.join(parts)})"
 
-    Includes meal name, calories, macros, and likely ingredients.
-    """
-    lines: list[str] = [f"✅ Saved. You added: {analysis.meal_name}"]
+
+def _format_meal_body(analysis: NutritionAnalysis) -> list[str]:
+    """Shared body lines: calories, macros, totals, ingredients."""
+    lines: list[str] = []
     lines.append("")
     lines.append("Calories")
     lines.append(f"{analysis.calories_kcal}kcal")
@@ -31,12 +38,36 @@ def format_meal_saved(analysis: NutritionAnalysis) -> str:
     lines.append(f"• Carbs: {analysis.carbs_g}g")
     lines.append(f"• Fat: {analysis.fat_g}g")
 
+    # Total weight / volume / caffeine (show only if present)
+    totals: list[str] = []
+    if analysis.weight_g is not None:
+        totals.append(f"Weight: {analysis.weight_g}g")
+    if analysis.volume_ml is not None:
+        totals.append(f"Volume: {analysis.volume_ml}ml")
+    if analysis.caffeine_mg is not None:
+        totals.append(f"Caffeine: {analysis.caffeine_mg}mg")
+    if totals:
+        lines.append("")
+        lines.append("Totals")
+        for t in totals:
+            lines.append(f"• {t}")
+
     if analysis.likely_ingredients:
         lines.append("")
         lines.append("Likely Ingredients")
         for ing in analysis.likely_ingredients:
-            lines.append(f"• {ing.name} ({ing.amount}, {ing.calories_kcal}kcal)")
+            lines.append(_format_ingredient_line(ing))
 
+    return lines
+
+
+def format_meal_saved(analysis: NutritionAnalysis) -> str:
+    """Format the meal summary shown after saving (spec §3.4).
+
+    Includes meal name, calories, macros, totals, and likely ingredients.
+    """
+    lines = [f"✅ Saved. You added: {analysis.meal_name}"]
+    lines.extend(_format_meal_body(analysis))
     return "\n".join(lines)
 
 
@@ -45,22 +76,8 @@ def format_meal_draft(analysis: NutritionAnalysis) -> str:
 
     Same as saved but with a different header.
     """
-    lines: list[str] = [f"🍽 Draft: {analysis.meal_name}"]
-    lines.append("")
-    lines.append("Calories")
-    lines.append(f"{analysis.calories_kcal}kcal")
-    lines.append("")
-    lines.append("Macros")
-    lines.append(f"• Protein: {analysis.protein_g}g")
-    lines.append(f"• Carbs: {analysis.carbs_g}g")
-    lines.append(f"• Fat: {analysis.fat_g}g")
-
-    if analysis.likely_ingredients:
-        lines.append("")
-        lines.append("Likely Ingredients")
-        for ing in analysis.likely_ingredients:
-            lines.append(f"• {ing.name} ({ing.amount}, {ing.calories_kcal}kcal)")
-
+    lines = [f"🍽 Draft: {analysis.meal_name}"]
+    lines.extend(_format_meal_body(analysis))
     return "\n".join(lines)
 
 
