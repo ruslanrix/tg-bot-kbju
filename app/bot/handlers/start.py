@@ -7,7 +7,8 @@ from aiogram.filters import Command
 from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.keyboards import help_change_tz_keyboard, main_keyboard
+from app.bot.keyboards import help_change_tz_keyboard, main_keyboard, timezone_city_keyboard
+from app.bot.middlewares import ONBOARDING_TEXT_A, ONBOARDING_TEXT_B
 from app.db.repos import UserRepo
 
 router = Router(name="start")
@@ -20,15 +21,24 @@ router = Router(name="start")
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, session: AsyncSession) -> None:
-    """Handle /start — register user and show main keyboard."""
+    """Handle /start — register user and show main keyboard or onboarding."""
     if message.from_user is None:
         return
-    await UserRepo.get_or_create(session, message.from_user.id)
-    await message.answer(
-        "Welcome! I'm your meal tracking assistant 🍽\n"
-        "Send me a photo or description of your food and I'll estimate the nutrition.",
-        reply_markup=main_keyboard(),
-    )
+    user = await UserRepo.get_or_create(session, message.from_user.id)
+
+    if user.tz_mode is None:
+        # New user or timezone not set — show onboarding (spec FEAT-03).
+        await message.answer(ONBOARDING_TEXT_A)
+        await message.answer(
+            ONBOARDING_TEXT_B,
+            reply_markup=timezone_city_keyboard(),
+        )
+    else:
+        # Returning user — normal welcome.
+        await message.answer(
+            "Welcome back! 🍽 Send me a photo or description of your food.",
+            reply_markup=main_keyboard(),
+        )
 
 
 # ---------------------------------------------------------------------------
