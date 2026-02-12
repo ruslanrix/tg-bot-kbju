@@ -38,6 +38,23 @@ class Settings(BaseSettings):
     MAX_CONCURRENT_PER_USER: int = 1
     PORT: int = 8000
 
+    # --- Edit / Delete windows --------------------------------------------
+    EDIT_WINDOW_HOURS: int = 48
+    DELETE_WINDOW_HOURS: int = 48
+
+    # --- Retention purge --------------------------------------------------
+    PURGE_DELETED_AFTER_DAYS: int = 30
+
+    # --- Scheduled tasks --------------------------------------------------
+    TASKS_SECRET: str = ""
+
+    # --- Inactivity reminders ---------------------------------------------
+    REMINDER_INACTIVITY_HOURS: int = 6
+    REMINDER_COOLDOWN_HOURS: int = 6
+
+    # --- Admin ------------------------------------------------------------
+    ADMIN_IDS: list[int] = []
+
     # --- Validators ------------------------------------------------------
     @property
     def use_webhook(self) -> bool:
@@ -71,7 +88,17 @@ class Settings(BaseSettings):
             raise ValueError("WEBHOOK_SECRET is required when PUBLIC_URL is set")
         return self
 
-    @field_validator("OPENAI_TIMEOUT_SECONDS", "MAX_PHOTO_BYTES", "RATE_LIMIT_PER_MINUTE", "PORT")
+    @field_validator(
+        "OPENAI_TIMEOUT_SECONDS",
+        "MAX_PHOTO_BYTES",
+        "RATE_LIMIT_PER_MINUTE",
+        "PORT",
+        "EDIT_WINDOW_HOURS",
+        "DELETE_WINDOW_HOURS",
+        "PURGE_DELETED_AFTER_DAYS",
+        "REMINDER_INACTIVITY_HOURS",
+        "REMINDER_COOLDOWN_HOURS",
+    )
     @classmethod
     def _validate_positive(cls, v: int) -> int:
         if v <= 0:
@@ -83,6 +110,27 @@ class Settings(BaseSettings):
     def _validate_concurrency(cls, v: int) -> int:
         if v < 1:
             raise ValueError("MAX_CONCURRENT_PER_USER must be at least 1")
+        return v
+
+    @field_validator("TASKS_SECRET")
+    @classmethod
+    def _validate_tasks_secret(cls, v: str) -> str:
+        if not v:  # empty = tasks endpoints disabled
+            return v
+        if len(v) < 8:
+            raise ValueError("TASKS_SECRET must be at least 8 characters")
+        return v
+
+    @field_validator("ADMIN_IDS", mode="before")
+    @classmethod
+    def _parse_admin_ids(cls, v: list[int] | str) -> list[int]:
+        if isinstance(v, str):
+            if not v.strip():
+                return []
+            try:
+                return [int(x.strip()) for x in v.split(",") if x.strip()]
+            except ValueError:
+                raise ValueError("ADMIN_IDS must be a comma-separated list of integers")
         return v
 
 
