@@ -126,8 +126,9 @@ class ActivityMiddleware(BaseMiddleware):
     ``LoggingMiddleware`` for consistency.
 
     The touch is executed **after** the downstream handler returns
-    successfully.  Failures in the touch itself are silently logged
-    so they never break the main handler flow.
+    successfully, inside a SAVEPOINT (``begin_nested``) so that a
+    failed touch rolls back only the savepoint — never the main
+    transaction.  Failures are silently logged.
     """
 
     async def __call__(
@@ -151,8 +152,8 @@ class ActivityMiddleware(BaseMiddleware):
             return result
 
         try:
-            await UserRepo.touch_activity(session, tg_user_id)
-            # The session is committed by DBSessionMiddleware after we return.
+            async with session.begin_nested():
+                await UserRepo.touch_activity(session, tg_user_id)
         except Exception:
             logger.warning(
                 "Failed to touch activity for user %s",

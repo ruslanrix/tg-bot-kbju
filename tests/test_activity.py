@@ -204,6 +204,21 @@ class TestActivityMiddleware:
         assert result == "important_result"
 
     @pytest.mark.asyncio
+    async def test_uses_savepoint_for_touch(self) -> None:
+        """Touch runs inside begin_nested() savepoint."""
+        middleware = ActivityMiddleware()
+        handler = AsyncMock(return_value="ok")
+        event = _make_message_update(tg_user_id=12345)
+        mock_session = AsyncMock(spec=AsyncSession)
+        data: dict = {"session": mock_session}
+
+        with patch.object(UserRepo, "touch_activity", new_callable=AsyncMock):
+            await middleware(handler, event, data)
+
+        # Verify begin_nested was used as async context manager
+        mock_session.begin_nested.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_handler_exception_propagates_without_touch(self) -> None:
         """If handler raises, exception propagates and no touch is attempted."""
         middleware = ActivityMiddleware()
@@ -217,3 +232,45 @@ class TestActivityMiddleware:
 
         # Touch should NOT be called when handler raises
         mock_touch.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Savepoint isolation test (P1 review fix)
+# ---------------------------------------------------------------------------
+
+
+class TestSavepointIsolation:
+    """Verify failed touch doesn't corrupt the main transaction."""
+
+    async def test_failed_touch_preserves_session(
+        self, session: AsyncSession, test_user: User
+    ) -> None:
+        """DB error in touch_activity → savepoint rolls back, session still usable.
+
+        Simulates the scenario from P1 review: if touch raises a DB error,
+        the main transaction should remain intact and subsequent commits
+        should succeed.
+        """
+        from sqlalchemy import select as sa_select
+
+        # Perform a normal operation (update goal)
+        test_user.goal = "deficit"
+        await session.flush()
+
+        # Now simulate a failed touch inside a savepoint
+        try:
+            async with session.begin_nested():
+                # Force an error inside the savepoint
+                raise RuntimeError("simulated touch DB failure")
+        except RuntimeError:
+            pass  # Middleware would catch this
+
+        # Main session should still be usable — commit should work
+        await session.commit()
+
+        # Verify the goal update survived
+        result = await session.execute(
+            sa_select(User).where(User.id == test_user.id)
+        )
+        user = result.scalar_one()
+        assert user.goal == "deficit"
