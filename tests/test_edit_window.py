@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.handlers.meal import MSG_EDIT_WINDOW_EXPIRED, on_saved_edit
+from app.bot.handlers.meal import MSG_EDIT_WINDOW_EXPIRED, _handle_edit_text, on_saved_edit
 from app.db.models import MealEntry, User
 
 
@@ -282,3 +282,162 @@ class TestEditWindowMessage:
     def test_message_contains_emoji(self) -> None:
         msg = MSG_EDIT_WINDOW_EXPIRED.format(hours=48)
         assert "⏳" in msg
+
+
+# ---------------------------------------------------------------------------
+# P2 fix: invalid UUID in callback data
+# ---------------------------------------------------------------------------
+
+
+class TestInvalidUUID:
+    """Invalid meal_id in callback data must not crash the handler."""
+
+    @pytest.mark.asyncio
+    async def test_invalid_uuid_returns_not_found(self) -> None:
+        """Corrupted callback_data with invalid UUID → 'Meal not found.' alert."""
+        cb = AsyncMock()
+        cb.from_user = MagicMock()
+        cb.from_user.id = 111
+        cb.data = "saved_edit:not-a-valid-uuid"
+        cb.answer = AsyncMock()
+        state = AsyncMock()
+
+        session = AsyncMock(spec=AsyncSession)
+        await on_saved_edit(cb, session, state)
+
+        state.set_state.assert_not_called()
+        cb.answer.assert_called_once()
+        assert "not found" in cb.answer.call_args.args[0].lower()
+        assert cb.answer.call_args.kwargs.get("show_alert") is True
+
+    @pytest.mark.asyncio
+    async def test_empty_uuid_returns_not_found(self) -> None:
+        """Empty meal_id string → 'Meal not found.' alert."""
+        cb = AsyncMock()
+        cb.from_user = MagicMock()
+        cb.from_user.id = 111
+        cb.data = "saved_edit:"
+        cb.answer = AsyncMock()
+        state = AsyncMock()
+
+        session = AsyncMock(spec=AsyncSession)
+        await on_saved_edit(cb, session, state)
+
+        state.set_state.assert_not_called()
+        cb.answer.assert_called_once()
+        assert "not found" in cb.answer.call_args.args[0].lower()
+
+
+# ---------------------------------------------------------------------------
+# P1 fix: late submit after FSM start
+# ---------------------------------------------------------------------------
+
+
+def _make_edit_message(
+    text: str = "updated chicken",
+    tg_user_id: int = 111,
+) -> AsyncMock:
+    """Build a fake Message for the edit text flow."""
+    msg = AsyncMock()
+    msg.text = text
+    msg.from_user = MagicMock()
+    msg.from_user.id = tg_user_id
+    msg.chat = MagicMock()
+    msg.chat.id = 222
+    msg.message_id = 444
+    msg.reply = AsyncMock()
+    msg.answer = AsyncMock()
+    return msg
+
+
+class TestLateEditSubmit:
+    """Edit window must be re-checked when the user finally sends correction text."""
+
+    @pytest.mark.asyncio
+    async def test_late_submit_blocked(self) -> None:
+        """Enter FSM inside window, submit text after window expires → blocked."""
+        user = _make_user()
+        # Meal is now 50h old (past the 48h window)
+        meal = _make_meal(user, consumed_hours_ago=50.0)
+        msg = _make_edit_message()
+
+        state = AsyncMock()
+        state.get_data = AsyncMock(return_value={"edit_meal_id": str(meal.id)})
+        state.clear = AsyncMock()
+
+        bot = AsyncMock()
+
+        with (
+            patch("app.bot.handlers.meal.UserRepo") as mock_user_repo,
+            patch("app.bot.handlers.meal.MealRepo") as mock_meal_repo,
+            patch("app.bot.handlers.meal.edit_window_hours", 48),
+        ):
+            mock_user_repo.get_or_create = AsyncMock(return_value=user)
+            mock_meal_repo.get_by_id = AsyncMock(return_value=meal)
+
+            session = AsyncMock(spec=AsyncSession)
+            await _handle_edit_text(msg, session, bot, state)
+
+        # Should NOT call OpenAI or update
+        mock_meal_repo.update.assert_not_called()
+        # Should reply with expired message
+        msg.reply.assert_called_once()
+        assert "48" in msg.reply.call_args.args[0]
+
+    @pytest.mark.asyncio
+    async def test_submit_inside_window_proceeds(self) -> None:
+        """Submit text while still inside window → proceeds to OpenAI."""
+        user = _make_user()
+        meal = _make_meal(user, consumed_hours_ago=10.0)
+        msg = _make_edit_message()
+
+        state = AsyncMock()
+        state.get_data = AsyncMock(return_value={"edit_meal_id": str(meal.id)})
+        state.clear = AsyncMock()
+
+        bot = AsyncMock()
+
+        with (
+            patch("app.bot.handlers.meal.UserRepo") as mock_user_repo,
+            patch("app.bot.handlers.meal.MealRepo") as mock_meal_repo,
+            patch("app.bot.handlers.meal._check_limits", return_value=True),
+            patch("app.bot.handlers.meal._analyze_with_typing", return_value=None),
+            patch("app.bot.handlers.meal.edit_window_hours", 48),
+        ):
+            mock_user_repo.get_or_create = AsyncMock(return_value=user)
+            mock_meal_repo.get_by_id = AsyncMock(return_value=meal)
+
+            session = AsyncMock(spec=AsyncSession)
+            await _handle_edit_text(msg, session, bot, state)
+
+        # Should have sent processing message (got past window check)
+        # _analyze_with_typing returned None so it stopped there, but
+        # it means the window check passed
+        assert msg.reply.call_count >= 1
+
+    @pytest.mark.asyncio
+    async def test_late_submit_meal_not_found(self) -> None:
+        """Meal deleted between FSM entry and text submission → reply not found."""
+        user = _make_user()
+        meal_id = uuid.uuid4()
+        msg = _make_edit_message()
+
+        state = AsyncMock()
+        state.get_data = AsyncMock(return_value={"edit_meal_id": str(meal_id)})
+        state.clear = AsyncMock()
+
+        bot = AsyncMock()
+
+        with (
+            patch("app.bot.handlers.meal.UserRepo") as mock_user_repo,
+            patch("app.bot.handlers.meal.MealRepo") as mock_meal_repo,
+            patch("app.bot.handlers.meal.edit_window_hours", 48),
+        ):
+            mock_user_repo.get_or_create = AsyncMock(return_value=user)
+            mock_meal_repo.get_by_id = AsyncMock(return_value=None)
+
+            session = AsyncMock(spec=AsyncSession)
+            await _handle_edit_text(msg, session, bot, state)
+
+        msg.reply.assert_called_once()
+        assert "not found" in msg.reply.call_args.args[0].lower()

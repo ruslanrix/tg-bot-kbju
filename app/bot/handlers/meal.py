@@ -266,9 +266,15 @@ async def on_saved_edit(callback: CallbackQuery, session: AsyncSession, state: F
         return
     meal_id_str = callback.data.split(":", 1)[1]
 
+    try:
+        meal_uuid = uuid.UUID(meal_id_str)
+    except ValueError:
+        await callback.answer("Meal not found.", show_alert=True)
+        return
+
     # Edit window guard (spec D6/FEAT-08)
     user = await UserRepo.get_or_create(session, callback.from_user.id)
-    meal = await MealRepo.get_by_id(session, uuid.UUID(meal_id_str), user.id)
+    meal = await MealRepo.get_by_id(session, meal_uuid, user.id)
     if meal is None:
         await callback.answer("Meal not found.", show_alert=True)
         return
@@ -546,6 +552,18 @@ async def _handle_edit_text(
     edit_meal_id = uuid.UUID(edit_meal_id_str) if edit_meal_id_str else None
 
     await state.clear()
+
+    # Re-check edit window (P1: user may have waited after entering FSM)
+    if edit_meal_id is not None:
+        user = await UserRepo.get_or_create(session, message.from_user.id)
+        meal = await MealRepo.get_by_id(session, edit_meal_id, user.id)
+        if meal is None:
+            await message.reply("Meal not found.")
+            return
+        age = datetime.now(timezone.utc) - meal.consumed_at_utc
+        if age.total_seconds() > edit_window_hours * 3600:
+            await message.reply(MSG_EDIT_WINDOW_EXPIRED.format(hours=edit_window_hours))
+            return
 
     # Precheck
     text_result = check_text(message.text, has_photo=False)
