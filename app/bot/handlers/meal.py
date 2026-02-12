@@ -26,7 +26,7 @@ from app.bot.keyboards import main_keyboard, saved_actions_keyboard
 from app.core.time import today_local, user_timezone
 from app.db.repos import MealRepo, UserRepo
 from app.reports.stats import today_stats
-from app.services.nutrition_ai import NutritionAIService, NutritionAnalysis
+from app.services.nutrition_ai import NutritionAIService, NutritionAnalysis, sanity_check
 from app.services.precheck import (
     MSG_NOT_TEXT_OR_PHOTO,
     check_message_type,
@@ -45,6 +45,7 @@ router = Router(name="meal")
 
 MSG_UNRECOGNIZED = "I couldn't recognize the food. Please try sending it again."
 MSG_THROTTLE = "Too many requests. Please wait a bit and try again 🙂"
+MSG_SANITY_FAIL = "⚠️ The values look unrealistic. Please double-check and try again."
 
 # Processing messages (spec D4/FEAT-06)
 MSG_PROCESSING_NEW = "🔄 Combobulating..."
@@ -440,6 +441,13 @@ async def _handle_analysis_result(
         return
     if analysis.action.startswith("reject_"):
         await _respond(analysis.user_message or MSG_UNRECOGNIZED)
+        return
+
+    # Sanity check (spec D5/FEAT-07) — reject absurd values
+    sanity_error = sanity_check(analysis)
+    if sanity_error is not None:
+        logger.warning("Sanity check failed: %s", sanity_error)
+        await _respond(MSG_SANITY_FAIL)
         return
 
     # action == "save" → save to DB immediately (no draft)
