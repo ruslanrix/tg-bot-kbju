@@ -50,6 +50,17 @@ class User(Base):
     tz_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
     tz_offset_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # UI language: "EN" (default) or "RU".
+    language: Mapped[str] = mapped_column(String(2), nullable=False, server_default="EN")
+
+    # Activity / reminder tracking.
+    last_activity_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_reminder_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
