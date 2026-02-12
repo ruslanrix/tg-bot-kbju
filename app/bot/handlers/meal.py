@@ -47,6 +47,7 @@ MSG_UNRECOGNIZED = "I couldn't recognize the food. Please try sending it again."
 MSG_THROTTLE = "Too many requests. Please wait a bit and try again 🙂"
 MSG_SANITY_FAIL = "⚠️ The values look unrealistic. Please double-check and try again."
 MSG_EDIT_WINDOW_EXPIRED = "⏳ This meal can no longer be edited (older than {hours}h)."
+MSG_DELETE_WINDOW_EXPIRED = "⏳ This meal can no longer be deleted (older than {hours}h)."
 
 # Processing messages (spec D4/FEAT-06)
 MSG_PROCESSING_NEW = "🔄 Combobulating..."
@@ -58,6 +59,7 @@ concurrency_guard: ConcurrencyGuard | None = None
 ai_service: NutritionAIService | None = None
 max_photo_bytes: int = 5 * 1024 * 1024
 edit_window_hours: int = 48
+delete_window_hours: int = 48
 
 
 # ---------------------------------------------------------------------------
@@ -296,14 +298,33 @@ async def on_saved_edit(callback: CallbackQuery, session: AsyncSession, state: F
 
 @router.callback_query(F.data.startswith("saved_delete:"))
 async def on_saved_delete(callback: CallbackQuery, session: AsyncSession) -> None:
-    """Soft-delete a saved meal and show updated Today's Stats."""
+    """Soft-delete a saved meal (with delete-window guard)."""
     if callback.from_user is None or callback.data is None:
         return
     meal_id_str = callback.data.split(":", 1)[1]
 
-    user = await UserRepo.get_or_create(session, callback.from_user.id)
-    deleted = await MealRepo.soft_delete(session, uuid.UUID(meal_id_str), user.id)
+    try:
+        meal_uuid = uuid.UUID(meal_id_str)
+    except ValueError:
+        await callback.answer("Meal not found.", show_alert=True)
+        return
 
+    user = await UserRepo.get_or_create(session, callback.from_user.id)
+    meal = await MealRepo.get_by_id(session, meal_uuid, user.id)
+    if meal is None:
+        await callback.answer("Meal not found.", show_alert=True)
+        return
+
+    # Delete window guard (spec D6/D7/FEAT-09)
+    age = datetime.now(timezone.utc) - meal.consumed_at_utc
+    if age.total_seconds() > delete_window_hours * 3600:
+        await callback.answer(
+            MSG_DELETE_WINDOW_EXPIRED.format(hours=delete_window_hours),
+            show_alert=True,
+        )
+        return
+
+    deleted = await MealRepo.soft_delete(session, meal_uuid, user.id)
     if not deleted:
         await callback.answer("Meal not found.", show_alert=True)
         return
@@ -327,13 +348,36 @@ async def on_saved_delete(callback: CallbackQuery, session: AsyncSession) -> Non
 
 @router.callback_query(F.data.startswith("hist_delete:"))
 async def on_history_delete(callback: CallbackQuery, session: AsyncSession) -> None:
-    """Soft-delete from history view."""
+    """Soft-delete from history view (with delete-window guard)."""
     if callback.from_user is None or callback.data is None:
         return
     meal_id_str = callback.data.split(":", 1)[1]
 
+    try:
+        meal_uuid = uuid.UUID(meal_id_str)
+    except ValueError:
+        await callback.answer("Meal not found.", show_alert=True)
+        return
+
     user = await UserRepo.get_or_create(session, callback.from_user.id)
-    await MealRepo.soft_delete(session, uuid.UUID(meal_id_str), user.id)
+    meal = await MealRepo.get_by_id(session, meal_uuid, user.id)
+    if meal is None:
+        await callback.answer("Meal not found.", show_alert=True)
+        return
+
+    # Delete window guard (spec D6/D7/FEAT-09)
+    age = datetime.now(timezone.utc) - meal.consumed_at_utc
+    if age.total_seconds() > delete_window_hours * 3600:
+        await callback.answer(
+            MSG_DELETE_WINDOW_EXPIRED.format(hours=delete_window_hours),
+            show_alert=True,
+        )
+        return
+
+    deleted = await MealRepo.soft_delete(session, meal_uuid, user.id)
+    if not deleted:
+        await callback.answer("Meal not found.", show_alert=True)
+        return
 
     tz = user_timezone(user.tz_mode, user.tz_name, user.tz_offset_minutes)
     local_d = today_local(tz)
