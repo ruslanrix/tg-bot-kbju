@@ -155,7 +155,6 @@ make lint   # ruff check
 | `/help`         | Usage instructions                 |
 | `/add`          | Manually write a meal (no photo)   |
 | `/goals`        | Set daily calorie goal             |
-| `/timezone`     | Change timezone (city or UTC)      |
 | `/stats`        | Today / weekly / 4-week stats      |
 | `/history`      | Last 20 meals with delete          |
 | `/language`     | Switch UI language (EN / RU)       |
@@ -164,6 +163,9 @@ make lint   # ruff check
 | `/subscription` | Stub (coming soon)                 |
 
 Send any **text** or **photo** of food to log a meal.
+
+> **Timezone** is set during onboarding (first launch) and can be changed
+> later via the "Change Time Zone" button in the help/settings flow.
 
 ## Versioning and releases
 
