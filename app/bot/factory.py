@@ -69,6 +69,7 @@ def create_dispatcher(settings: Settings) -> Dispatcher:
     meal.concurrency_guard = ConcurrencyGuard()
     meal.max_photo_bytes = settings.MAX_PHOTO_BYTES
     meal.edit_window_hours = settings.EDIT_WINDOW_HOURS
+    meal.delete_window_hours = settings.DELETE_WINDOW_HOURS
 
     openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
     meal.ai_service = NutritionAIService(
