@@ -213,6 +213,31 @@ async def handle_unsupported(message: Message) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Legacy draft callback fallbacks (backward compat after draft removal)
+# ---------------------------------------------------------------------------
+
+_DRAFT_EXPIRED_MSG = "This draft has expired. Please send your meal again."
+
+
+@router.callback_query(F.data.startswith("draft_save:"))
+async def on_legacy_draft_save(callback: CallbackQuery) -> None:
+    """Handle legacy draft Save buttons from pre-deploy messages."""
+    await callback.answer(_DRAFT_EXPIRED_MSG, show_alert=True)
+
+
+@router.callback_query(F.data.startswith("draft_edit:"))
+async def on_legacy_draft_edit(callback: CallbackQuery) -> None:
+    """Handle legacy draft Edit buttons from pre-deploy messages."""
+    await callback.answer(_DRAFT_EXPIRED_MSG, show_alert=True)
+
+
+@router.callback_query(F.data.startswith("draft_delete:"))
+async def on_legacy_draft_delete(callback: CallbackQuery) -> None:
+    """Handle legacy draft Delete buttons from pre-deploy messages."""
+    await callback.answer(_DRAFT_EXPIRED_MSG, show_alert=True)
+
+
+# ---------------------------------------------------------------------------
 # Saved meal callbacks
 # ---------------------------------------------------------------------------
 

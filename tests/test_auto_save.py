@@ -95,16 +95,22 @@ class TestDraftRemoved:
         assert not hasattr(meal_module, "DraftData")
 
     def test_no_draft_save_handler(self) -> None:
-        """on_draft_save callback handler should not exist."""
+        """Original on_draft_save should not exist (replaced by legacy fallback)."""
         assert not hasattr(meal_module, "on_draft_save")
 
     def test_no_draft_edit_handler(self) -> None:
-        """on_draft_edit callback handler should not exist."""
+        """Original on_draft_edit should not exist (replaced by legacy fallback)."""
         assert not hasattr(meal_module, "on_draft_edit")
 
     def test_no_draft_delete_handler(self) -> None:
-        """on_draft_delete callback handler should not exist."""
+        """Original on_draft_delete should not exist (replaced by legacy fallback)."""
         assert not hasattr(meal_module, "on_draft_delete")
+
+    def test_legacy_draft_fallbacks_exist(self) -> None:
+        """Legacy fallback handlers should exist for backward compat."""
+        assert hasattr(meal_module, "on_legacy_draft_save")
+        assert hasattr(meal_module, "on_legacy_draft_edit")
+        assert hasattr(meal_module, "on_legacy_draft_delete")
 
 
 # ---------------------------------------------------------------------------
@@ -289,3 +295,45 @@ class TestAutoSave:
         assert "Grilled Salmon" in reply_text
         assert "450kcal" in reply_text
         assert "Today's Stats" in reply_text
+
+
+# ---------------------------------------------------------------------------
+# Tests: Legacy draft callback fallbacks
+# ---------------------------------------------------------------------------
+
+
+class TestLegacyDraftFallbacks:
+    @pytest.mark.asyncio
+    async def test_legacy_draft_save_shows_alert(self) -> None:
+        """Pressing old Save button shows 'draft expired' alert."""
+        from app.bot.handlers.meal import on_legacy_draft_save
+
+        cb = AsyncMock()
+        cb.answer = AsyncMock()
+        await on_legacy_draft_save(cb)
+        cb.answer.assert_called_once()
+        call_args = cb.answer.call_args
+        assert "expired" in call_args.args[0].lower()
+        assert call_args.kwargs.get("show_alert") is True
+
+    @pytest.mark.asyncio
+    async def test_legacy_draft_edit_shows_alert(self) -> None:
+        """Pressing old Edit button shows 'draft expired' alert."""
+        from app.bot.handlers.meal import on_legacy_draft_edit
+
+        cb = AsyncMock()
+        cb.answer = AsyncMock()
+        await on_legacy_draft_edit(cb)
+        cb.answer.assert_called_once()
+        assert "expired" in cb.answer.call_args.args[0].lower()
+
+    @pytest.mark.asyncio
+    async def test_legacy_draft_delete_shows_alert(self) -> None:
+        """Pressing old Delete button shows 'draft expired' alert."""
+        from app.bot.handlers.meal import on_legacy_draft_delete
+
+        cb = AsyncMock()
+        cb.answer = AsyncMock()
+        await on_legacy_draft_delete(cb)
+        cb.answer.assert_called_once()
+        assert "expired" in cb.answer.call_args.args[0].lower()
