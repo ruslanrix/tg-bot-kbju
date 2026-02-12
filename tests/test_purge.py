@@ -4,7 +4,8 @@ Verifies:
 - MealRepo.hard_delete_deleted_before removes only old soft-deleted rows.
 - Active records are untouched.
 - Recently soft-deleted records survive.
-- /tasks/purge/{secret} endpoint auth and behaviour.
+- /tasks/purge endpoint auth via X-Tasks-Secret header and behaviour.
+- Task engine disposal on shutdown.
 """
 
 from __future__ import annotations
@@ -181,23 +182,39 @@ class TestHardDeleteDeletedBefore:
 
 
 # ---------------------------------------------------------------------------
-# HTTP endpoint tests: /tasks/purge/{secret}
+# HTTP endpoint tests: /tasks/purge (X-Tasks-Secret header)
 # ---------------------------------------------------------------------------
 
 
 class TestPurgeEndpoint:
-    """Test the /tasks/purge/{secret} endpoint auth and behaviour."""
+    """Test the /tasks/purge endpoint auth via header and behaviour."""
 
     @pytest.mark.asyncio
     async def test_wrong_secret_returns_403(self) -> None:
-        """Wrong secret → 403."""
+        """Wrong X-Tasks-Secret header → 403."""
         with patch("app.web.main.get_settings") as mock_settings:
             mock_settings.return_value.TASKS_SECRET = "correct-secret-123"
             from app.web.main import app
 
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.post("/tasks/purge/wrong-secret")
+                resp = await client.post(
+                    "/tasks/purge",
+                    headers={"X-Tasks-Secret": "wrong-secret"},
+                )
+
+        assert resp.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_missing_header_returns_403(self) -> None:
+        """No X-Tasks-Secret header → 403."""
+        with patch("app.web.main.get_settings") as mock_settings:
+            mock_settings.return_value.TASKS_SECRET = "correct-secret-123"
+            from app.web.main import app
+
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post("/tasks/purge")
 
         assert resp.status_code == 403
 
@@ -210,13 +227,16 @@ class TestPurgeEndpoint:
 
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.post("/tasks/purge/anything")
+                resp = await client.post(
+                    "/tasks/purge",
+                    headers={"X-Tasks-Secret": "anything"},
+                )
 
         assert resp.status_code == 403
 
     @pytest.mark.asyncio
     async def test_valid_secret_calls_purge(self) -> None:
-        """Valid secret → calls hard_delete_deleted_before, returns count."""
+        """Valid X-Tasks-Secret → calls hard_delete_deleted_before, returns count."""
         import app.web.main as web_main
 
         mock_session = AsyncMock(spec=AsyncSession)
@@ -238,7 +258,10 @@ class TestPurgeEndpoint:
 
                 transport = ASGITransport(app=web_main.app)
                 async with AsyncClient(transport=transport, base_url="http://test") as client:
-                    resp = await client.post("/tasks/purge/my-secret-12345")
+                    resp = await client.post(
+                        "/tasks/purge",
+                        headers={"X-Tasks-Secret": "my-secret-12345"},
+                    )
 
             assert resp.status_code == 200
             data = resp.json()
@@ -246,4 +269,56 @@ class TestPurgeEndpoint:
             assert data["deleted_count"] == 5
             mock_repo.hard_delete_deleted_before.assert_called_once()
         finally:
+            web_main._session_factory = original_factory
+
+
+# ---------------------------------------------------------------------------
+# Shutdown cleanup test
+# ---------------------------------------------------------------------------
+
+
+class TestTaskEngineDispose:
+    """Verify task engine is disposed on shutdown."""
+
+    @pytest.mark.asyncio
+    async def test_engine_disposed_on_shutdown(self) -> None:
+        """Lifespan shutdown disposes task engine and clears references."""
+        import app.web.main as web_main
+
+        mock_engine = AsyncMock()
+        mock_engine.dispose = AsyncMock()
+
+        original_engine = web_main._task_engine
+        original_factory = web_main._session_factory
+        web_main._task_engine = mock_engine
+        web_main._session_factory = MagicMock()
+
+        try:
+            with (
+                patch("app.web.main.get_settings") as mock_settings,
+                patch("app.web.main._run_migrations"),
+                patch("app.web.main.create_async_engine", return_value=mock_engine),
+                patch("app.web.main.async_sessionmaker", return_value=MagicMock()),
+                patch("app.web.main.create_bot") as mock_create_bot,
+                patch("app.web.main.create_dispatcher") as mock_create_dp,
+                patch("app.web.main.setup_logging"),
+            ):
+                mock_settings.return_value.DATABASE_URL = "sqlite+aiosqlite://"
+                mock_settings.return_value.LOG_LEVEL = "INFO"
+                mock_settings.return_value.use_webhook = False
+                mock_bot = AsyncMock()
+                mock_create_bot.return_value = mock_bot
+                mock_dp = AsyncMock()
+                mock_dp.start_polling = AsyncMock()
+                mock_dp.stop_polling = AsyncMock()
+                mock_create_dp.return_value = mock_dp
+
+                async with web_main.lifespan(web_main.app):
+                    pass  # go through startup + shutdown
+
+            mock_engine.dispose.assert_called_once()
+            assert web_main._task_engine is None
+            assert web_main._session_factory is None
+        finally:
+            web_main._task_engine = original_engine
             web_main._session_factory = original_factory
