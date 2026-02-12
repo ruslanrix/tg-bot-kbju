@@ -16,7 +16,12 @@ from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.bot.handlers import goals, history, meal, start, stats, stubs, timezone
-from app.bot.middlewares import DBSessionMiddleware, LoggingMiddleware, TimezoneGateMiddleware
+from app.bot.middlewares import (
+    ActivityMiddleware,
+    DBSessionMiddleware,
+    LoggingMiddleware,
+    TimezoneGateMiddleware,
+)
 from app.core.config import Settings
 from app.services.nutrition_ai import NutritionAIService
 from app.services.rate_limit import ConcurrencyGuard, RateLimiter
@@ -59,6 +64,10 @@ def create_dispatcher(settings: Settings) -> Dispatcher:
 
     # --- Logging middleware ---
     dp.update.outer_middleware(LoggingMiddleware())
+
+    # --- Activity tracking middleware (FEAT-11) ---
+    # Must be after DBSessionMiddleware (needs session).
+    dp.update.outer_middleware(ActivityMiddleware())
 
     # --- Timezone onboarding gate (spec D2) ---
     # Must be registered AFTER DBSessionMiddleware (needs session in data).

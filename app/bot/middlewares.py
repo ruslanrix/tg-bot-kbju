@@ -1,4 +1,4 @@
-"""Aiogram outer middlewares for DB session, logging context, and timezone gate.
+"""Aiogram outer middlewares for DB session, logging, activity, and timezone gate.
 
 ``DBSessionMiddleware`` injects an ``AsyncSession`` into handler data
 (key ``"session"``), committing on success and rolling back on error.
@@ -6,6 +6,9 @@
 ``LoggingMiddleware`` sets logging contextvars from the incoming update
 so structured log lines automatically include ``tg_user_id``,
 ``chat_id``, ``message_id``.
+
+``ActivityMiddleware`` updates ``last_activity_at`` for every user
+interaction after the handler completes successfully.
 
 ``TimezoneGateMiddleware`` intercepts all user input when timezone is not
 set and redirects to the onboarding flow (spec D2/FEAT-03).
@@ -108,6 +111,65 @@ class LoggingMiddleware(BaseMiddleware):
             ctx_tg_user_id.reset(tok_uid)
             ctx_chat_id.reset(tok_cid)
             ctx_message_id.reset(tok_mid)
+
+
+# ---------------------------------------------------------------------------
+# Activity tracking middleware (FEAT-11)
+# ---------------------------------------------------------------------------
+
+
+class ActivityMiddleware(BaseMiddleware):
+    """Update ``last_activity_at`` on every successful user interaction.
+
+    Registered as an **update-level outer** middleware *after*
+    ``DBSessionMiddleware`` so a session is available, and *after*
+    ``LoggingMiddleware`` for consistency.
+
+    The touch is executed **after** the downstream handler returns
+    successfully.  Failures in the touch itself are silently logged
+    so they never break the main handler flow.
+    """
+
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: dict[str, Any],
+    ) -> Any:
+        result = await handler(event, data)
+
+        # Only touch activity for real user updates.
+        if not isinstance(event, Update):
+            return result
+
+        tg_user_id = self._extract_user_id(event)
+        if tg_user_id is None:
+            return result
+
+        session: AsyncSession | None = data.get("session")
+        if session is None:
+            return result
+
+        try:
+            await UserRepo.touch_activity(session, tg_user_id)
+            # The session is committed by DBSessionMiddleware after we return.
+        except Exception:
+            logger.warning(
+                "Failed to touch activity for user %s",
+                tg_user_id,
+                exc_info=True,
+            )
+
+        return result
+
+    @staticmethod
+    def _extract_user_id(update: Update) -> int | None:
+        """Extract the Telegram user ID from an Update."""
+        if update.message and update.message.from_user:
+            return update.message.from_user.id
+        if update.callback_query and update.callback_query.from_user:
+            return update.callback_query.from_user.id
+        return None
 
 
 # ---------------------------------------------------------------------------
