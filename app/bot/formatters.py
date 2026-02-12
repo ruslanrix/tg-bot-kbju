@@ -20,9 +20,9 @@ def _format_ingredient_line(ing: Ingredient) -> str:
     """Build a single ingredient bullet, including weight/volume when present."""
     parts = [ing.amount, f"{ing.calories_kcal}kcal"]
     if ing.weight_g is not None:
-        parts.append(f"{ing.weight_g}g")
+        parts.append(f"{round(ing.weight_g)}g")
     if ing.volume_ml is not None:
-        parts.append(f"{ing.volume_ml}ml")
+        parts.append(f"{round(ing.volume_ml)}ml")
     return f"• {ing.name} ({', '.join(parts)})"
 
 

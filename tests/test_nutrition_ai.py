@@ -303,6 +303,16 @@ class TestIngredientWeightVolume:
         ing = Ingredient(name="spice", amount="pinch", calories_kcal=0, weight_g=0)
         assert ing.weight_g == 0
 
+    def test_ingredient_fractional_weight_accepted(self):
+        """OpenAI commonly returns 12.5g — must not fail validation."""
+        ing = Ingredient(name="butter", amount="1 tbsp", calories_kcal=100, weight_g=12.5)
+        assert ing.weight_g == 12.5
+
+    def test_ingredient_fractional_volume_accepted(self):
+        """OpenAI may return 250.5ml — must not fail validation."""
+        ing = Ingredient(name="milk", amount="1 cup", calories_kcal=90, volume_ml=250.5)
+        assert ing.volume_ml == 250.5
+
     def test_ingredient_serialization_includes_fields(self):
         """model_dump() includes weight_g and volume_ml for JSONB storage."""
         ing = Ingredient(
@@ -391,4 +401,47 @@ class TestSanityCheck:
     def test_none_values_pass(self):
         """None fields should not trigger sanity failure."""
         a = NutritionAnalysis(action="save", calories_kcal=200)
+        assert sanity_check(a) is None
+
+    def test_ingredient_absurd_calories_rejected(self):
+        a = NutritionAnalysis(
+            action="save", calories_kcal=500,
+            likely_ingredients=[
+                Ingredient(name="x", amount="x", calories_kcal=MAX_CALORIES_KCAL + 1),
+            ],
+        )
+        result = sanity_check(a)
+        assert result is not None
+        assert "Ingredient" in result
+
+    def test_ingredient_absurd_weight_rejected(self):
+        a = NutritionAnalysis(
+            action="save", calories_kcal=500,
+            likely_ingredients=[
+                Ingredient(name="rice", amount="1kg", calories_kcal=200, weight_g=MAX_WEIGHT_G + 1),
+            ],
+        )
+        result = sanity_check(a)
+        assert result is not None
+        assert "rice" in result
+
+    def test_ingredient_absurd_volume_rejected(self):
+        a = NutritionAnalysis(
+            action="save", calories_kcal=200,
+            likely_ingredients=[
+                Ingredient(name="juice", amount="huge", calories_kcal=100, volume_ml=MAX_VOLUME_ML + 1),
+            ],
+        )
+        result = sanity_check(a)
+        assert result is not None
+        assert "juice" in result
+
+    def test_ingredient_normal_values_pass(self):
+        a = NutritionAnalysis(
+            action="save", calories_kcal=500,
+            likely_ingredients=[
+                Ingredient(name="rice", amount="150g", calories_kcal=200, weight_g=150),
+                Ingredient(name="chicken", amount="100g", calories_kcal=165, weight_g=100),
+            ],
+        )
         assert sanity_check(a) is None

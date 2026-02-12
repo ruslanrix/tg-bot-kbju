@@ -31,13 +31,19 @@ ActionType = Literal[
 
 
 class Ingredient(BaseModel):
-    """A single likely ingredient in the meal."""
+    """A single likely ingredient in the meal.
+
+    ``weight_g`` and ``volume_ml`` are ``float`` (not ``int``) because
+    OpenAI commonly returns fractional values like ``12.5``.  Pydantic
+    would reject those for strict ``int`` fields, causing the entire
+    analysis to be treated as ``reject_unrecognized``.
+    """
 
     name: str
     amount: str
     calories_kcal: int = Field(ge=0)
-    weight_g: int | None = Field(default=None, ge=0)
-    volume_ml: int | None = Field(default=None, ge=0)
+    weight_g: float | None = Field(default=None, ge=0)
+    volume_ml: float | None = Field(default=None, ge=0)
 
 
 class NutritionAnalysis(BaseModel):
@@ -85,6 +91,8 @@ def sanity_check(analysis: NutritionAnalysis) -> str | None:
     Returns ``None`` when values are plausible, or an error string
     describing the first absurd value found.  Reject actions are
     always considered valid (no nutrition data to check).
+
+    Both top-level totals and per-ingredient values are checked.
     """
     if analysis.action != "save":
         return None
@@ -102,6 +110,15 @@ def sanity_check(analysis: NutritionAnalysis) -> str | None:
     for label, value, limit in checks:
         if value is not None and value > limit:
             return f"{label} value ({value}) exceeds maximum ({limit})."
+
+    # Per-ingredient checks
+    for ing in analysis.likely_ingredients:
+        if ing.calories_kcal > MAX_CALORIES_KCAL:
+            return f"Ingredient '{ing.name}' calories ({ing.calories_kcal}) exceeds maximum ({MAX_CALORIES_KCAL})."
+        if ing.weight_g is not None and ing.weight_g > MAX_WEIGHT_G:
+            return f"Ingredient '{ing.name}' weight ({ing.weight_g}) exceeds maximum ({MAX_WEIGHT_G})."
+        if ing.volume_ml is not None and ing.volume_ml > MAX_VOLUME_ML:
+            return f"Ingredient '{ing.name}' volume ({ing.volume_ml}) exceeds maximum ({MAX_VOLUME_ML})."
 
     return None
 
