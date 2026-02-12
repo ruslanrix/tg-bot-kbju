@@ -81,6 +81,22 @@ class UserRepo:
         result = await session.execute(stmt)
         return result.scalar_one()
 
+    @staticmethod
+    async def touch_activity(session: AsyncSession, tg_user_id: int) -> None:
+        """Update ``last_activity_at`` to now for a given Telegram user.
+
+        This is a lightweight fire-and-forget update used by the activity
+        tracking middleware.  If the user doesn't exist yet, this is a no-op
+        (the user will be created later by ``get_or_create``).
+        """
+        now = datetime.now(timezone.utc)
+        stmt = (
+            update(User)
+            .where(User.tg_user_id == tg_user_id)
+            .values(last_activity_at=now)
+        )
+        await session.execute(stmt)
+
 
 # ---------------------------------------------------------------------------
 # MealRepo
