@@ -3,7 +3,7 @@
 Creates and wires together all aiogram components:
 - Bot instance
 - Dispatcher with all routers
-- Middlewares (DB session, logging)
+- Middlewares (DB session, logging, timezone gate)
 - Service singletons (rate limiter, concurrency guard, OpenAI)
 """
 
@@ -16,7 +16,7 @@ from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.bot.handlers import goals, history, meal, start, stats, stubs, timezone
-from app.bot.middlewares import DBSessionMiddleware, LoggingMiddleware
+from app.bot.middlewares import DBSessionMiddleware, LoggingMiddleware, TimezoneGateMiddleware
 from app.core.config import Settings
 from app.services.nutrition_ai import NutritionAIService
 from app.services.rate_limit import ConcurrencyGuard, RateLimiter
@@ -59,6 +59,10 @@ def create_dispatcher(settings: Settings) -> Dispatcher:
 
     # --- Logging middleware ---
     dp.update.outer_middleware(LoggingMiddleware())
+
+    # --- Timezone onboarding gate (spec D2) ---
+    # Must be registered AFTER DBSessionMiddleware (needs session in data).
+    dp.update.outer_middleware(TimezoneGateMiddleware())
 
     # --- Wire service singletons into meal handler module ---
     meal.rate_limiter = RateLimiter(max_per_minute=settings.RATE_LIMIT_PER_MINUTE)
