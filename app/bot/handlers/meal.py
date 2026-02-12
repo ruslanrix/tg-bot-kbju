@@ -46,6 +46,7 @@ router = Router(name="meal")
 MSG_UNRECOGNIZED = "I couldn't recognize the food. Please try sending it again."
 MSG_THROTTLE = "Too many requests. Please wait a bit and try again 🙂"
 MSG_SANITY_FAIL = "⚠️ The values look unrealistic. Please double-check and try again."
+MSG_EDIT_WINDOW_EXPIRED = "⏳ This meal can no longer be edited (older than {hours}h)."
 
 # Processing messages (spec D4/FEAT-06)
 MSG_PROCESSING_NEW = "🔄 Combobulating..."
@@ -56,6 +57,7 @@ rate_limiter: RateLimiter | None = None
 concurrency_guard: ConcurrencyGuard | None = None
 ai_service: NutritionAIService | None = None
 max_photo_bytes: int = 5 * 1024 * 1024
+edit_window_hours: int = 48
 
 
 # ---------------------------------------------------------------------------
@@ -258,11 +260,26 @@ async def on_legacy_draft_delete(callback: CallbackQuery) -> None:
 
 
 @router.callback_query(F.data.startswith("saved_edit:"))
-async def on_saved_edit(callback: CallbackQuery, state: FSMContext) -> None:
-    """Trigger edit flow for a saved meal."""
+async def on_saved_edit(callback: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
+    """Trigger edit flow for a saved meal (with edit-window guard)."""
     if callback.from_user is None or callback.data is None:
         return
     meal_id_str = callback.data.split(":", 1)[1]
+
+    # Edit window guard (spec D6/FEAT-08)
+    user = await UserRepo.get_or_create(session, callback.from_user.id)
+    meal = await MealRepo.get_by_id(session, uuid.UUID(meal_id_str), user.id)
+    if meal is None:
+        await callback.answer("Meal not found.", show_alert=True)
+        return
+
+    age = datetime.now(timezone.utc) - meal.consumed_at_utc
+    if age.total_seconds() > edit_window_hours * 3600:
+        await callback.answer(
+            MSG_EDIT_WINDOW_EXPIRED.format(hours=edit_window_hours),
+            show_alert=True,
+        )
+        return
 
     await state.set_state(EditMealStates.waiting_for_text)
     await state.update_data(edit_meal_id=meal_id_str)
