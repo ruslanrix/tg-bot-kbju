@@ -19,18 +19,20 @@ personal goals, and manage timezone.
 
 ```
 app/
-  core/          config, logging
+  core/          config, logging, time, version
   db/            models, repos, engine
+  i18n/          locales (EN, RU), t() helper
   services/      nutrition_ai, precheck, rate_limit
   reports/       stats aggregation
   bot/
-    handlers/    start, meal, goals, stats, history, timezone, stubs
+    handlers/    start, meal, goals, stats, history, timezone,
+                 language, version, admin, stubs
     keyboards.py
     formatters.py
     middlewares.py
     factory.py
-  web/           FastAPI app (webhook + health)
-tests/           pytest (112 tests)
+  web/           FastAPI app (webhook + health + task endpoints)
+tests/           pytest (483+ tests)
 alembic/         DB migrations
 ```
 
@@ -147,18 +149,45 @@ make lint   # ruff check
 
 ## Bot commands
 
-| Command         | Description                     |
-| --------------- | ------------------------------- |
-| `/start`        | Register and show main keyboard |
-| `/help`         | Usage instructions              |
-| `/goals`        | Set daily calorie goal          |
-| `/timezone`     | Change timezone (city or UTC)   |
-| `/stats`        | Today / weekly / 4-week stats   |
-| `/history`      | Last 20 meals with delete       |
-| `/feedback`     | Stub (coming soon)              |
-| `/subscription` | Stub (coming soon)              |
+| Command         | Description                        |
+| --------------- | ---------------------------------- |
+| `/start`        | Register and show main keyboard    |
+| `/help`         | Usage instructions                 |
+| `/add`          | Manually write a meal (no photo)   |
+| `/goals`        | Set daily calorie goal             |
+| `/stats`        | Today / weekly / 4-week stats      |
+| `/history`      | Last 20 meals with delete          |
+| `/language`     | Switch UI language (EN / RU)       |
+| `/version`      | Show current bot version           |
+| `/feedback`     | Stub (coming soon)                 |
+| `/subscription` | Stub (coming soon)                 |
 
 Send any **text** or **photo** of food to log a meal.
+
+> **Timezone** is set during onboarding (first launch) and can be changed
+> later via the "Change Time Zone" button in the help/settings flow.
+
+## Versioning and releases
+
+The single source of truth for the version is `pyproject.toml` (`[project].version`).
+The `/version` bot command reads it at runtime via `app.core.version.get_version()`.
+
+To cut a new release:
+
+```bash
+# 1. Bump version in pyproject.toml
+# 2. Add a new section to CHANGELOG.md
+# 3. Commit and push to main
+git add pyproject.toml CHANGELOG.md
+git commit -m "release: vX.Y.Z"
+git push
+
+# 4. Tag the release
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
 ## Repo hygiene
 
