@@ -11,7 +11,7 @@ Commands:
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -65,8 +65,8 @@ async def cmd_admin_stats(message: Message, session: AsyncSession) -> None:
     total_meals = total_meals_result.scalar_one()
 
     # Meals logged today (UTC)
-    today = date.today()
-    today_start = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
+    today_utc = datetime.now(timezone.utc).date()
+    today_start = datetime(today_utc.year, today_utc.month, today_utc.day, tzinfo=timezone.utc)
     today_meals_result = await session.execute(
         select(func.count(MealEntry.id)).where(
             MealEntry.is_deleted.is_(False),

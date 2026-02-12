@@ -10,6 +10,7 @@ Verifies:
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -152,6 +153,27 @@ class TestAdminStats:
             await cmd_admin_stats(msg, session=mock_session)
             msg.reply.assert_called_once_with(NOT_AUTHORIZED)
             mock_session.execute.assert_not_called()
+        finally:
+            admin_mod.admin_ids = original
+
+    @pytest.mark.asyncio
+    async def test_today_uses_utc_not_local(self) -> None:
+        """Verify today boundary is calculated via datetime.now(utc), not date.today()."""
+        original = admin_mod.admin_ids
+        admin_mod.admin_ids = [12345]
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one.return_value = 0
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        try:
+            msg = _make_message(12345)
+            with patch("app.bot.handlers.admin.datetime", wraps=datetime) as mock_dt:
+                await cmd_admin_stats(msg, session=mock_session)
+
+            # datetime.now must be called with timezone.utc
+            mock_dt.now.assert_called_once_with(timezone.utc)
         finally:
             admin_mod.admin_ids = original
 
