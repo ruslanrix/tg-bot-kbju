@@ -15,7 +15,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.bot.handlers import goals, history, meal, start, stats, stubs, timezone
+from app.bot.handlers import admin, goals, history, meal, start, stats, stubs, timezone
 from app.bot.middlewares import (
     ActivityMiddleware,
     DBSessionMiddleware,
@@ -87,9 +87,13 @@ def create_dispatcher(settings: Settings) -> Dispatcher:
         timeout=settings.OPENAI_TIMEOUT_SECONDS,
     )
 
+    # --- Wire admin handler settings ---
+    admin.admin_ids = settings.admin_ids_list
+
     # --- Register routers (order matters for catch-all) ---
     # Commands and specific handlers first
     dp.include_router(start.router)
+    dp.include_router(admin.router)
     dp.include_router(goals.router)
     dp.include_router(timezone.router)
     dp.include_router(stats.router)

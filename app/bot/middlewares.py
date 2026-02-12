@@ -192,7 +192,7 @@ ONBOARDING_TEXT_B = (
 _TZ_CALLBACK_PREFIXES = ("tz_city:", "tz_offset:", "tz_city_menu", "tz_offset_menu")
 
 # Commands that are allowed even without timezone.
-_ALLOWED_COMMANDS = {"/start", "/help"}
+_ALLOWED_COMMANDS = {"/start", "/help", "/admin_ping", "/admin_stats", "/admin_limits"}
 
 
 class TimezoneGateMiddleware(BaseMiddleware):

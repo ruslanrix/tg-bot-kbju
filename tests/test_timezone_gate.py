@@ -142,6 +142,18 @@ class TestIsAlwaysAllowed:
         update = _make_message_update(text="/HELP")
         assert TimezoneGateMiddleware._is_always_allowed(update) is False
 
+    def test_admin_ping_allowed(self) -> None:
+        update = _make_message_update(text="/admin_ping")
+        assert TimezoneGateMiddleware._is_always_allowed(update) is True
+
+    def test_admin_stats_allowed(self) -> None:
+        update = _make_message_update(text="/admin_stats")
+        assert TimezoneGateMiddleware._is_always_allowed(update) is True
+
+    def test_admin_limits_allowed(self) -> None:
+        update = _make_message_update(text="/admin_limits")
+        assert TimezoneGateMiddleware._is_always_allowed(update) is True
+
     def test_other_command_blocked(self) -> None:
         update = _make_message_update(text="/stats")
         assert TimezoneGateMiddleware._is_always_allowed(update) is False
@@ -362,6 +374,11 @@ class TestOnboardingTexts:
     def test_allowed_commands_include_start_and_help(self) -> None:
         assert "/start" in _ALLOWED_COMMANDS
         assert "/help" in _ALLOWED_COMMANDS
+
+    def test_allowed_commands_include_admin(self) -> None:
+        assert "/admin_ping" in _ALLOWED_COMMANDS
+        assert "/admin_stats" in _ALLOWED_COMMANDS
+        assert "/admin_limits" in _ALLOWED_COMMANDS
 
     def test_tz_callback_prefixes(self) -> None:
         assert "tz_city:" in _TZ_CALLBACK_PREFIXES
