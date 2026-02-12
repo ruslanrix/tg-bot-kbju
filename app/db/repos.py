@@ -97,6 +97,39 @@ class UserRepo:
         )
         await session.execute(stmt)
 
+    @staticmethod
+    async def get_inactive_users(
+        session: AsyncSession,
+        inactivity_cutoff: datetime,
+        cooldown_cutoff: datetime,
+    ) -> list[User]:
+        """Return users eligible for an inactivity reminder.
+
+        Eligible means:
+        - ``last_activity_at`` is not NULL and older than *inactivity_cutoff*
+        - ``last_reminder_at`` is NULL **or** older than *cooldown_cutoff*
+        - ``tz_mode`` is set (user completed onboarding)
+        """
+        stmt = select(User).where(
+            User.tz_mode.is_not(None),
+            User.last_activity_at.is_not(None),
+            User.last_activity_at < inactivity_cutoff,
+            (User.last_reminder_at.is_(None)) | (User.last_reminder_at < cooldown_cutoff),
+        )
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def update_last_reminder(session: AsyncSession, user_id: uuid.UUID) -> None:
+        """Set ``last_reminder_at`` to now for a given user."""
+        now = datetime.now(timezone.utc)
+        stmt = (
+            update(User)
+            .where(User.id == user_id)
+            .values(last_reminder_at=now)
+        )
+        await session.execute(stmt)
+
 
 # ---------------------------------------------------------------------------
 # MealRepo

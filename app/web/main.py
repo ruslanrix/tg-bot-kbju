@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from app.bot.factory import create_bot, create_dispatcher
 from app.core.config import get_settings
 from app.core.logging import setup_logging
-from app.db.repos import MealRepo
+from app.db.repos import MealRepo, UserRepo
 
 logger = logging.getLogger(__name__)
 
@@ -210,3 +210,57 @@ async def task_purge(
         extra={"event": "purge_done", "deleted_count": count},
     )
     return {"status": "ok", "deleted_count": count}
+
+
+REMINDER_TEXT = "Hey! You haven't logged any meals in a while. Send me a photo or describe what you ate 🍽️"
+
+
+@app.post("/tasks/remind")
+async def task_remind(
+    x_tasks_secret: str | None = Header(default=None),
+) -> dict[str, object]:
+    """Send inactivity reminders to eligible users.
+
+    Protected by ``X-Tasks-Secret`` header. Selects users who have been
+    inactive for ``REMINDER_INACTIVITY_HOURS`` and haven't received a
+    reminder within ``REMINDER_COOLDOWN_HOURS``.  Handles partial send
+    failures gracefully.
+    """
+    settings = get_settings()
+    if not settings.TASKS_SECRET or x_tasks_secret != settings.TASKS_SECRET:
+        return Response(status_code=403)  # type: ignore[return-value]
+
+    if _session_factory is None or _bot is None:
+        return Response(status_code=503)  # type: ignore[return-value]
+
+    now = datetime.now(timezone.utc)
+    inactivity_cutoff = now - timedelta(hours=settings.REMINDER_INACTIVITY_HOURS)
+    cooldown_cutoff = now - timedelta(hours=settings.REMINDER_COOLDOWN_HOURS)
+
+    async with _session_factory() as session:
+        users = await UserRepo.get_inactive_users(session, inactivity_cutoff, cooldown_cutoff)
+
+        sent = 0
+        failed = 0
+        for user in users:
+            try:
+                await _bot.send_message(chat_id=user.tg_user_id, text=REMINDER_TEXT)
+                await UserRepo.update_last_reminder(session, user.id)
+                sent += 1
+            except Exception:
+                failed += 1
+                logger.warning(
+                    "Failed to send reminder to user %s",
+                    user.tg_user_id,
+                    exc_info=True,
+                )
+
+        await session.commit()
+
+    logger.info(
+        "Remind completed: %d sent, %d failed",
+        sent,
+        failed,
+        extra={"event": "remind_done", "sent": sent, "failed": failed},
+    )
+    return {"status": "ok", "sent": sent, "failed": failed}
