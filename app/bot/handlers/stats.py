@@ -8,7 +8,7 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.formatters import format_four_week_stats, format_today_stats, format_weekly_stats
-from app.bot.keyboards import stats_keyboard
+from app.bot.keyboards import main_keyboard, stats_keyboard
 from app.core.time import last_7_days, last_28_days_weeks, today_local, user_timezone
 from app.db.repos import UserRepo
 from app.reports.stats import four_week_stats, today_stats, weekly_stats
@@ -41,6 +41,7 @@ async def on_stats_today(callback: CallbackQuery, session: AsyncSession) -> None
     text = format_today_stats(stats)
 
     await callback.message.edit_text(text)  # type: ignore[union-attr]
+    await callback.message.answer("👇", reply_markup=main_keyboard())  # type: ignore[union-attr]
     await callback.answer()
 
 
@@ -58,6 +59,7 @@ async def on_stats_weekly(callback: CallbackQuery, session: AsyncSession) -> Non
     text = format_weekly_stats(stats)
 
     await callback.message.edit_text(text)  # type: ignore[union-attr]
+    await callback.message.answer("👇", reply_markup=main_keyboard())  # type: ignore[union-attr]
     await callback.answer()
 
 
@@ -75,4 +77,5 @@ async def on_stats_4weeks(callback: CallbackQuery, session: AsyncSession) -> Non
     text = format_four_week_stats(stats)
 
     await callback.message.edit_text(text)  # type: ignore[union-attr]
+    await callback.message.answer("👇", reply_markup=main_keyboard())  # type: ignore[union-attr]
     await callback.answer()

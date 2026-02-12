@@ -11,7 +11,7 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.keyboards import timezone_city_keyboard, timezone_offset_keyboard
+from app.bot.keyboards import main_keyboard, timezone_city_keyboard, timezone_offset_keyboard
 from app.db.repos import UserRepo
 
 router = Router(name="timezone")
@@ -62,6 +62,7 @@ async def on_city_selected(callback: CallbackQuery, session: AsyncSession) -> No
     )
 
     await callback.message.edit_text(f"Timezone set to {iana} ✅")  # type: ignore[union-attr]
+    await callback.message.answer("👇", reply_markup=main_keyboard())  # type: ignore[union-attr]
     await callback.answer()
 
 
@@ -91,4 +92,5 @@ async def on_offset_selected(callback: CallbackQuery, session: AsyncSession) -> 
     await callback.message.edit_text(  # type: ignore[union-attr]
         f"Timezone set to UTC{sign}{hours} ✅"
     )
+    await callback.message.answer("👇", reply_markup=main_keyboard())  # type: ignore[union-attr]
     await callback.answer()

@@ -7,7 +7,7 @@ from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.keyboards import goal_inline_keyboard
+from app.bot.keyboards import goal_inline_keyboard, main_keyboard
 from app.db.repos import UserRepo
 
 router = Router(name="goals")
@@ -39,4 +39,5 @@ async def on_goal_selected(callback: CallbackQuery, session: AsyncSession) -> No
         goal, goal
     )
     await callback.message.edit_text(f"Goal set to {label} ✅")  # type: ignore[union-attr]
+    await callback.message.answer("👇", reply_markup=main_keyboard())  # type: ignore[union-attr]
     await callback.answer()
