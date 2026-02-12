@@ -46,6 +46,10 @@ router = Router(name="meal")
 MSG_UNRECOGNIZED = "I couldn't recognize the food. Please try sending it again."
 MSG_THROTTLE = "Too many requests. Please wait a bit and try again 🙂"
 
+# Processing messages (spec D4/FEAT-06)
+MSG_PROCESSING_NEW = "🔄 Combobulating..."
+MSG_PROCESSING_EDIT = "🔄 Analysing again with your feedback..."
+
 # Module-level singletons (initialized in factory.py)
 rate_limiter: RateLimiter | None = None
 concurrency_guard: ConcurrencyGuard | None = None
@@ -123,15 +127,20 @@ async def handle_photo(message: Message, session: AsyncSession, bot: Bot) -> Non
     if not await _check_limits(message):
         return
 
+    # Send processing message (spec D4/FEAT-06)
+    proc_msg = await message.reply(MSG_PROCESSING_NEW)
+
     # Typing heartbeat + OpenAI call
     analysis = await _analyze_with_typing(
         message, bot, lambda svc: _do_photo_analysis(svc, bot, photo.file_id, caption)
     )
     if analysis is None:
+        await proc_msg.edit_text(MSG_UNRECOGNIZED)
         return
 
     await _handle_analysis_result(
-        message, session, analysis, source="photo", photo_file_id=photo.file_id
+        message, session, analysis, source="photo",
+        photo_file_id=photo.file_id, proc_msg=proc_msg,
     )
 
 
@@ -187,15 +196,20 @@ async def handle_text(message: Message, session: AsyncSession, bot: Bot, state: 
     if not await _check_limits(message):
         return
 
+    # Send processing message (spec D4/FEAT-06)
+    proc_msg = await message.reply(MSG_PROCESSING_NEW)
+
     # Typing heartbeat + OpenAI call
     analysis = await _analyze_with_typing(
         message, bot, lambda svc: svc.analyze_text(message.text or "")
     )
     if analysis is None:
+        await proc_msg.edit_text(MSG_UNRECOGNIZED)
         return
 
     await _handle_analysis_result(
-        message, session, analysis, source="text", original_text=message.text
+        message, session, analysis, source="text",
+        original_text=message.text, proc_msg=proc_msg,
     )
 
 
@@ -392,17 +406,29 @@ async def _handle_analysis_result(
     original_text: str | None = None,
     photo_file_id: str | None = None,
     edit_meal_id: uuid.UUID | None = None,
+    proc_msg: Message | None = None,
 ) -> None:
-    """Handle an OpenAI analysis result — reject or save immediately."""
+    """Handle an OpenAI analysis result — reject or save immediately.
+
+    If *proc_msg* is provided, the processing message is edited in place
+    with the final output (spec D4/FEAT-06). Otherwise, a new reply is sent.
+    """
     if message.from_user is None:
         return
 
+    async def _respond(text: str, **kwargs: Any) -> None:
+        """Edit processing message or send new reply."""
+        if proc_msg is not None:
+            await proc_msg.edit_text(text, **kwargs)
+        else:
+            await message.reply(text, **kwargs)
+
     # Reject actions
     if analysis.action == "reject_unrecognized":
-        await message.reply(MSG_UNRECOGNIZED)
+        await _respond(MSG_UNRECOGNIZED)
         return
     if analysis.action.startswith("reject_"):
-        await message.reply(analysis.user_message or MSG_UNRECOGNIZED)
+        await _respond(analysis.user_message or MSG_UNRECOGNIZED)
         return
 
     # action == "save" → save to DB immediately (no draft)
@@ -432,7 +458,7 @@ async def _handle_analysis_result(
     else:
         # Idempotency check
         if await MealRepo.exists_by_message(session, message.chat.id, message.message_id):
-            await message.reply("Already saved.")
+            await _respond("Already saved.")
             return
 
         # Create new meal
@@ -466,7 +492,7 @@ async def _handle_analysis_result(
     stats = await today_stats(session, user.id, local_d)
     stats_text = format_today_stats(stats)
 
-    await message.reply(
+    await _respond(
         f"{saved_text}\n\n{stats_text}",
         reply_markup=saved_actions_keyboard(meal_id_str),
     )
@@ -495,11 +521,15 @@ async def _handle_edit_text(
     if not await _check_limits(message):
         return
 
+    # Send edit-specific processing message (spec D4/FEAT-06)
+    proc_msg = await message.reply(MSG_PROCESSING_EDIT)
+
     # OpenAI analysis (required per spec §3.7 — ingredients must be generated)
     analysis = await _analyze_with_typing(
         message, bot, lambda svc: svc.analyze_text(message.text or "")
     )
     if analysis is None:
+        await proc_msg.edit_text(MSG_UNRECOGNIZED)
         return
 
     await _handle_analysis_result(
@@ -509,4 +539,5 @@ async def _handle_edit_text(
         source="text",
         original_text=message.text,
         edit_meal_id=edit_meal_id,
+        proc_msg=proc_msg,
     )
