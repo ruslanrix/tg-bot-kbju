@@ -372,6 +372,65 @@ class TestHistoryDeleteWindow:
 
 
 # ---------------------------------------------------------------------------
+# P2 fix: TOCTOU race — soft_delete returns False
+# ---------------------------------------------------------------------------
+
+
+class TestSoftDeleteRace:
+    """When soft_delete returns False (concurrent delete), show alert instead of 'Deleted'."""
+
+    @pytest.mark.asyncio
+    async def test_saved_delete_race_shows_not_found(self) -> None:
+        """get_by_id succeeds but soft_delete returns False → 'Meal not found.' alert."""
+        user = _make_user()
+        meal = _make_meal(user, consumed_hours_ago=1.0)
+        cb = _make_callback(meal.id)
+
+        with (
+            patch("app.bot.handlers.meal.UserRepo") as mock_user_repo,
+            patch("app.bot.handlers.meal.MealRepo") as mock_meal_repo,
+            patch("app.bot.handlers.meal.delete_window_hours", 48),
+        ):
+            mock_user_repo.get_or_create = AsyncMock(return_value=user)
+            mock_meal_repo.get_by_id = AsyncMock(return_value=meal)
+            mock_meal_repo.soft_delete = AsyncMock(return_value=False)
+
+            session = AsyncMock(spec=AsyncSession)
+            await on_saved_delete(cb, session)
+
+        # Should NOT show "Deleted" message
+        cb.message.edit_text.assert_not_called()
+        # Should show alert
+        cb.answer.assert_called_once()
+        assert "not found" in cb.answer.call_args.args[0].lower()
+        assert cb.answer.call_args.kwargs.get("show_alert") is True
+
+    @pytest.mark.asyncio
+    async def test_hist_delete_race_shows_not_found(self) -> None:
+        """History delete: get_by_id succeeds but soft_delete returns False."""
+        user = _make_user()
+        meal = _make_meal(user, consumed_hours_ago=1.0)
+        cb = _make_callback(meal.id, prefix="hist_delete")
+
+        with (
+            patch("app.bot.handlers.meal.UserRepo") as mock_user_repo,
+            patch("app.bot.handlers.meal.MealRepo") as mock_meal_repo,
+            patch("app.bot.handlers.meal.delete_window_hours", 48),
+        ):
+            mock_user_repo.get_or_create = AsyncMock(return_value=user)
+            mock_meal_repo.get_by_id = AsyncMock(return_value=meal)
+            mock_meal_repo.soft_delete = AsyncMock(return_value=False)
+
+            session = AsyncMock(spec=AsyncSession)
+            await on_history_delete(cb, session)
+
+        cb.message.edit_text.assert_not_called()
+        cb.answer.assert_called_once()
+        assert "not found" in cb.answer.call_args.args[0].lower()
+        assert cb.answer.call_args.kwargs.get("show_alert") is True
+
+
+# ---------------------------------------------------------------------------
 # Tests: message format
 # ---------------------------------------------------------------------------
 

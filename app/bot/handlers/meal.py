@@ -324,7 +324,10 @@ async def on_saved_delete(callback: CallbackQuery, session: AsyncSession) -> Non
         )
         return
 
-    await MealRepo.soft_delete(session, meal_uuid, user.id)
+    deleted = await MealRepo.soft_delete(session, meal_uuid, user.id)
+    if not deleted:
+        await callback.answer("Meal not found.", show_alert=True)
+        return
 
     tz = user_timezone(user.tz_mode, user.tz_name, user.tz_offset_minutes)
     local_d = today_local(tz)
@@ -371,7 +374,10 @@ async def on_history_delete(callback: CallbackQuery, session: AsyncSession) -> N
         )
         return
 
-    await MealRepo.soft_delete(session, meal_uuid, user.id)
+    deleted = await MealRepo.soft_delete(session, meal_uuid, user.id)
+    if not deleted:
+        await callback.answer("Meal not found.", show_alert=True)
+        return
 
     tz = user_timezone(user.tz_mode, user.tz_name, user.tz_offset_minutes)
     local_d = today_local(tz)
