@@ -1,8 +1,7 @@
-"""Meal input and draft management handlers (spec §3.4–3.8, §5, §6).
+"""Meal input and management handlers (spec §3.4–3.8, §5, §6).
 
 Handles:
-- Text/photo → precheck → rate limit → OpenAI → draft
-- Draft save / edit / delete callbacks
+- Text/photo → precheck → rate limit → OpenAI → immediate save
 - Saved meal edit / delete callbacks
 - Edit flow via FSM (StatesGroup)
 """
@@ -12,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -23,8 +21,8 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.formatters import format_meal_draft, format_meal_saved, format_today_stats
-from app.bot.keyboards import draft_actions_keyboard, main_keyboard, saved_actions_keyboard
+from app.bot.formatters import format_meal_saved, format_today_stats
+from app.bot.keyboards import main_keyboard, saved_actions_keyboard
 from app.core.time import today_local, user_timezone
 from app.db.repos import MealRepo, UserRepo
 from app.reports.stats import today_stats
@@ -48,28 +46,7 @@ router = Router(name="meal")
 MSG_UNRECOGNIZED = "I couldn't recognize the food. Please try sending it again."
 MSG_THROTTLE = "Too many requests. Please wait a bit and try again 🙂"
 
-# ---------------------------------------------------------------------------
-# In-memory draft storage
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class DraftData:
-    """Holds a meal draft before saving."""
-
-    analysis: NutritionAnalysis
-    source: str  # "text" or "photo"
-    draft_id: str = ""
-    original_text: str | None = None
-    photo_file_id: str | None = None
-    tg_chat_id: int = 0
-    tg_message_id: int = 0
-    # For edit flow: existing meal_id to update instead of create
-    edit_meal_id: uuid.UUID | None = None
-
-
 # Module-level singletons (initialized in factory.py)
-draft_store: dict[int, DraftData] = {}
 rate_limiter: RateLimiter | None = None
 concurrency_guard: ConcurrencyGuard | None = None
 ai_service: NutritionAIService | None = None
@@ -153,7 +130,9 @@ async def handle_photo(message: Message, session: AsyncSession, bot: Bot) -> Non
     if analysis is None:
         return
 
-    await _handle_analysis_result(message, analysis, source="photo", photo_file_id=photo.file_id)
+    await _handle_analysis_result(
+        message, session, analysis, source="photo", photo_file_id=photo.file_id
+    )
 
 
 async def _do_photo_analysis(
@@ -215,7 +194,9 @@ async def handle_text(message: Message, session: AsyncSession, bot: Bot, state: 
     if analysis is None:
         return
 
-    await _handle_analysis_result(message, analysis, source="text", original_text=message.text)
+    await _handle_analysis_result(
+        message, session, analysis, source="text", original_text=message.text
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -229,130 +210,6 @@ async def handle_unsupported(message: Message) -> None:
     result = check_message_type(has_text=bool(message.text), has_photo=bool(message.photo))
     if not result.passed:
         await message.reply(result.reject_message or MSG_NOT_TEXT_OR_PHOTO)
-
-
-# ---------------------------------------------------------------------------
-# Draft callbacks
-# ---------------------------------------------------------------------------
-
-
-@router.callback_query(F.data.startswith("draft_save:"))
-async def on_draft_save(callback: CallbackQuery, session: AsyncSession) -> None:
-    """Save a draft meal to the database."""
-    if callback.from_user is None or callback.data is None:
-        return
-    uid = callback.from_user.id
-    cb_draft_id = callback.data.split(":", 1)[1]
-    draft = draft_store.get(uid)
-    if draft is None or draft.draft_id != cb_draft_id:
-        await callback.answer("Draft expired.", show_alert=True)
-        return
-    draft_store.pop(uid, None)
-
-    user = await UserRepo.get_or_create(session, uid)
-    tz = user_timezone(user.tz_mode, user.tz_name, user.tz_offset_minutes)
-    local_d = today_local(tz)
-
-    # Idempotency check
-    if await MealRepo.exists_by_message(session, draft.tg_chat_id, draft.tg_message_id):
-        await callback.answer("Already saved.", show_alert=True)
-        return
-
-    analysis = draft.analysis
-
-    # Determine if this is an edit (update) or new create
-    if draft.edit_meal_id is not None:
-        # Update existing meal
-        await MealRepo.update(
-            session,
-            draft.edit_meal_id,
-            user.id,
-            meal_name=analysis.meal_name or "Unknown",
-            calories_kcal=analysis.calories_kcal or 0,
-            protein_g=analysis.protein_g or 0.0,
-            carbs_g=analysis.carbs_g or 0.0,
-            fat_g=analysis.fat_g or 0.0,
-            weight_g=analysis.weight_g,
-            volume_ml=analysis.volume_ml,
-            caffeine_mg=analysis.caffeine_mg,
-            likely_ingredients_json=[i.model_dump() for i in analysis.likely_ingredients],
-            raw_ai_response=analysis.model_dump(),
-        )
-        meal_id_str = str(draft.edit_meal_id)
-    else:
-        # Create new meal
-        meal = await MealRepo.create(
-            session,
-            user_id=user.id,
-            tg_chat_id=draft.tg_chat_id,
-            tg_message_id=draft.tg_message_id,
-            source=draft.source,
-            original_text=draft.original_text,
-            photo_file_id=draft.photo_file_id,
-            consumed_at_utc=datetime.now(timezone.utc),
-            local_date=local_d,
-            tz_name_snapshot=user.tz_name,
-            tz_offset_minutes_snapshot=user.tz_offset_minutes,
-            meal_name=analysis.meal_name or "Unknown",
-            calories_kcal=analysis.calories_kcal or 0,
-            protein_g=analysis.protein_g or 0.0,
-            carbs_g=analysis.carbs_g or 0.0,
-            fat_g=analysis.fat_g or 0.0,
-            weight_g=analysis.weight_g,
-            volume_ml=analysis.volume_ml,
-            caffeine_mg=analysis.caffeine_mg,
-            likely_ingredients_json=[i.model_dump() for i in analysis.likely_ingredients],
-            raw_ai_response=analysis.model_dump(),
-        )
-        meal_id_str = str(meal.id)
-
-    # Show saved message + Today's Stats
-    saved_text = format_meal_saved(analysis)
-    stats = await today_stats(session, user.id, local_d)
-    stats_text = format_today_stats(stats)
-
-    await callback.message.edit_text(  # type: ignore[union-attr]
-        f"{saved_text}\n\n{stats_text}",
-        reply_markup=saved_actions_keyboard(meal_id_str),
-    )
-    await callback.answer("Saved ✅")
-
-
-@router.callback_query(F.data.startswith("draft_edit:"))
-async def on_draft_edit(callback: CallbackQuery, state: FSMContext) -> None:
-    """Trigger edit flow for a draft — ask for corrected text."""
-    if callback.from_user is None or callback.data is None:
-        return
-    uid = callback.from_user.id
-    cb_draft_id = callback.data.split(":", 1)[1]
-    draft = draft_store.get(uid)
-    if draft is None or draft.draft_id != cb_draft_id:
-        await callback.answer("Draft expired.", show_alert=True)
-        return
-
-    # Keep draft in store, enter FSM waiting for corrected text
-    await state.set_state(EditMealStates.waiting_for_text)
-    await state.update_data(edit_meal_id=None)  # new meal, not yet saved
-
-    await callback.message.edit_text("Send corrected text for this meal:")  # type: ignore[union-attr]
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("draft_delete:"))
-async def on_draft_delete(callback: CallbackQuery) -> None:
-    """Delete a draft — remove from memory."""
-    if callback.from_user is None or callback.data is None:
-        return
-    uid = callback.from_user.id
-    cb_draft_id = callback.data.split(":", 1)[1]
-    draft = draft_store.get(uid)
-    if draft is not None and draft.draft_id != cb_draft_id:
-        await callback.answer("Draft expired.", show_alert=True)
-        return
-    draft_store.pop(uid, None)
-    await callback.message.edit_text("🗑️ Deleted.")  # type: ignore[union-attr]
-    await callback.message.answer("👇", reply_markup=main_keyboard())  # type: ignore[union-attr]
-    await callback.answer()
 
 
 # ---------------------------------------------------------------------------
@@ -503,6 +360,7 @@ async def _run_with_typing(
 
 async def _handle_analysis_result(
     message: Message,
+    session: AsyncSession,
     analysis: NutritionAnalysis,
     *,
     source: str,
@@ -510,7 +368,7 @@ async def _handle_analysis_result(
     photo_file_id: str | None = None,
     edit_meal_id: uuid.UUID | None = None,
 ) -> None:
-    """Handle an OpenAI analysis result — reject or show draft."""
+    """Handle an OpenAI analysis result — reject or save immediately."""
     if message.from_user is None:
         return
 
@@ -522,29 +380,77 @@ async def _handle_analysis_result(
         await message.reply(analysis.user_message or MSG_UNRECOGNIZED)
         return
 
-    # action == "save" → store draft and show preview
+    # action == "save" → save to DB immediately (no draft)
     uid = message.from_user.id
-    draft_id = str(uuid.uuid4())[:8]
+    user = await UserRepo.get_or_create(session, uid)
+    tz = user_timezone(user.tz_mode, user.tz_name, user.tz_offset_minutes)
+    local_d = today_local(tz)
 
-    draft_store[uid] = DraftData(
-        analysis=analysis,
-        source=source,
-        draft_id=draft_id,
-        original_text=original_text,
-        photo_file_id=photo_file_id,
-        tg_chat_id=message.chat.id,
-        tg_message_id=message.message_id,
-        edit_meal_id=edit_meal_id,
+    if edit_meal_id is not None:
+        # Update existing meal
+        await MealRepo.update(
+            session,
+            edit_meal_id,
+            user.id,
+            meal_name=analysis.meal_name or "Unknown",
+            calories_kcal=analysis.calories_kcal or 0,
+            protein_g=analysis.protein_g or 0.0,
+            carbs_g=analysis.carbs_g or 0.0,
+            fat_g=analysis.fat_g or 0.0,
+            weight_g=analysis.weight_g,
+            volume_ml=analysis.volume_ml,
+            caffeine_mg=analysis.caffeine_mg,
+            likely_ingredients_json=[i.model_dump() for i in analysis.likely_ingredients],
+            raw_ai_response=analysis.model_dump(),
+        )
+        meal_id_str = str(edit_meal_id)
+    else:
+        # Idempotency check
+        if await MealRepo.exists_by_message(session, message.chat.id, message.message_id):
+            await message.reply("Already saved.")
+            return
+
+        # Create new meal
+        meal = await MealRepo.create(
+            session,
+            user_id=user.id,
+            tg_chat_id=message.chat.id,
+            tg_message_id=message.message_id,
+            source=source,
+            original_text=original_text,
+            photo_file_id=photo_file_id,
+            consumed_at_utc=datetime.now(timezone.utc),
+            local_date=local_d,
+            tz_name_snapshot=user.tz_name,
+            tz_offset_minutes_snapshot=user.tz_offset_minutes,
+            meal_name=analysis.meal_name or "Unknown",
+            calories_kcal=analysis.calories_kcal or 0,
+            protein_g=analysis.protein_g or 0.0,
+            carbs_g=analysis.carbs_g or 0.0,
+            fat_g=analysis.fat_g or 0.0,
+            weight_g=analysis.weight_g,
+            volume_ml=analysis.volume_ml,
+            caffeine_mg=analysis.caffeine_mg,
+            likely_ingredients_json=[i.model_dump() for i in analysis.likely_ingredients],
+            raw_ai_response=analysis.model_dump(),
+        )
+        meal_id_str = str(meal.id)
+
+    # Show saved message + Today's Stats + Edit/Delete keyboard
+    saved_text = format_meal_saved(analysis)
+    stats = await today_stats(session, user.id, local_d)
+    stats_text = format_today_stats(stats)
+
+    await message.reply(
+        f"{saved_text}\n\n{stats_text}",
+        reply_markup=saved_actions_keyboard(meal_id_str),
     )
-
-    text = format_meal_draft(analysis)
-    await message.reply(text, reply_markup=draft_actions_keyboard(draft_id))
 
 
 async def _handle_edit_text(
     message: Message, session: AsyncSession, bot: Bot, state: FSMContext
 ) -> None:
-    """Handle corrected text in edit flow."""
+    """Handle corrected text in edit flow — re-analyze and update directly."""
     if message.from_user is None or not message.text:
         return
 
@@ -573,6 +479,7 @@ async def _handle_edit_text(
 
     await _handle_analysis_result(
         message,
+        session,
         analysis,
         source="text",
         original_text=message.text,
