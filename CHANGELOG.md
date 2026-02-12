@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-02-13
+
+### Fixed
+- Removed standalone "👇" emoji messages sent after goals, stats, language,
+  and delete callbacks.
+- **Ingredient formatting:** each ingredient line now shows only grams and
+  kcal (e.g. "Chicken (120g, 165kcal)"); no more ml, cups, or extra
+  descriptors. Localized units: `g/kcal` (EN), `г/ккал` (RU).
+- **Removed "Totals/Итого" block** from meal output; caffeine repositioned
+  to appear after calories and before macros.
+
+### Added
+- **Edit flow redesign:** tapping "Edit" now sends a new prompt message
+  asking what looks wrong, with "✅ It looks OK" and "🛑 Delete it" buttons.
+  User feedback (any text) triggers re-analysis with original meal context.
+  5-minute timeout, per-user session control, photo rejection during edit.
+
 ## [1.1.0] - 2026-02-12
 
 ### Added
