@@ -351,6 +351,7 @@ async def on_draft_delete(callback: CallbackQuery) -> None:
         return
     draft_store.pop(uid, None)
     await callback.message.edit_text("🗑️ Deleted.")  # type: ignore[union-attr]
+    await callback.message.answer("👇", reply_markup=main_keyboard())  # type: ignore[union-attr]
     await callback.answer()
 
 
@@ -395,6 +396,7 @@ async def on_saved_delete(callback: CallbackQuery, session: AsyncSession) -> Non
     await callback.message.edit_text(  # type: ignore[union-attr]
         f"🗑️ Deleted.\n\n{stats_text}"
     )
+    await callback.message.answer("👇", reply_markup=main_keyboard())  # type: ignore[union-attr]
     await callback.answer()
 
 
@@ -421,6 +423,7 @@ async def on_history_delete(callback: CallbackQuery, session: AsyncSession) -> N
     await callback.message.edit_text(  # type: ignore[union-attr]
         f"🗑️ Deleted.\n\n{stats_text}"
     )
+    await callback.message.answer("👇", reply_markup=main_keyboard())  # type: ignore[union-attr]
     await callback.answer()
 
 
