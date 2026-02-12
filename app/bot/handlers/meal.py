@@ -29,7 +29,7 @@ from app.i18n import t
 from app.reports.stats import today_stats
 from app.services.nutrition_ai import NutritionAIService, NutritionAnalysis, sanity_check
 from app.services.precheck import (
-    MSG_NOT_TEXT_OR_PHOTO,
+    REJECT_NOT_TEXT_OR_PHOTO,
     check_message_type,
     check_photo_size,
     check_text,
@@ -117,7 +117,7 @@ async def handle_photo(message: Message, session: AsyncSession, bot: Bot) -> Non
     if photo is None:
         # All variants exceed the limit.
         result = check_photo_size(message.photo[-1].file_size or 0, max_photo_bytes)
-        await message.reply(result.reject_message or "")
+        await message.reply(t(result.reject_key or "", lang))
         return
 
     # Text precheck on caption (if any)
@@ -125,7 +125,7 @@ async def handle_photo(message: Message, session: AsyncSession, bot: Bot) -> Non
     if caption:
         text_result = check_text(caption, has_photo=True)
         if not text_result.passed:
-            await message.reply(text_result.reject_message or "")
+            await message.reply(t(text_result.reject_key or "", lang))
             return
 
     # Rate limit + concurrency
@@ -199,7 +199,7 @@ async def handle_text(message: Message, session: AsyncSession, bot: Bot, state: 
     # §5.2–5.5 — text checks
     text_result = check_text(message.text, has_photo=False)
     if not text_result.passed:
-        await message.reply(text_result.reject_message or "")
+        await message.reply(t(text_result.reject_key or "", lang))
         return
 
     # Rate limit + concurrency
@@ -230,11 +230,15 @@ async def handle_text(message: Message, session: AsyncSession, bot: Bot, state: 
 
 
 @router.message()
-async def handle_unsupported(message: Message) -> None:
+async def handle_unsupported(message: Message, session: AsyncSession) -> None:
     """Reject stickers, voice, video, etc."""
     result = check_message_type(has_text=bool(message.text), has_photo=bool(message.photo))
     if not result.passed:
-        await message.reply(result.reject_message or MSG_NOT_TEXT_OR_PHOTO)
+        lang = "EN"
+        if message.from_user:
+            user = await UserRepo.get_or_create(session, message.from_user.id)
+            lang = user.language
+        await message.reply(t(result.reject_key or REJECT_NOT_TEXT_OR_PHOTO, lang))
 
 
 # ---------------------------------------------------------------------------
@@ -642,7 +646,7 @@ async def _handle_edit_text(
     # Precheck
     text_result = check_text(message.text, has_photo=False)
     if not text_result.passed:
-        await message.reply(text_result.reject_message or "")
+        await message.reply(t(text_result.reject_key or "", lang))
         return
 
     # Rate limit

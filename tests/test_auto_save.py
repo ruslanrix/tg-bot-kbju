@@ -350,3 +350,7 @@ class TestLegacyDraftFallbacks:
         with patch("app.bot.handlers.meal.UserRepo") as mock_repo:
             mock_repo.get_or_create = AsyncMock(return_value=_make_user())
             await on_legacy_draft_delete(cb, session)
+        cb.answer.assert_called_once()
+        call_args = cb.answer.call_args
+        assert "expired" in call_args.args[0].lower()
+        assert call_args.kwargs.get("show_alert") is True
