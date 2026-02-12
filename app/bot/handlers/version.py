@@ -18,5 +18,8 @@ router = Router(name="version")
 @router.message(Command("version"))
 async def cmd_version(message: Message) -> None:
     """Handle /version — reply with the current app version."""
-    version = get_version()
+    try:
+        version = get_version()
+    except RuntimeError:
+        version = "unknown"
     await message.reply(f"🤖 KBJU Bot v{version}")
