@@ -15,7 +15,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.bot.handlers import admin, goals, history, meal, start, stats, stubs, timezone
+from app.bot.handlers import admin, goals, history, language, meal, start, stats, stubs, timezone
 from app.bot.middlewares import (
     ActivityMiddleware,
     DBSessionMiddleware,
@@ -94,6 +94,7 @@ def create_dispatcher(settings: Settings) -> Dispatcher:
     # Commands and specific handlers first
     dp.include_router(start.router)
     dp.include_router(admin.router)
+    dp.include_router(language.router)
     dp.include_router(goals.router)
     dp.include_router(timezone.router)
     dp.include_router(stats.router)
