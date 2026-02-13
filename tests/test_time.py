@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as _dt
 
 from app.core.time import (
+    last_4_calendar_weeks,
     last_7_days,
     last_28_days_weeks,
     local_date_from_utc,
@@ -173,3 +174,61 @@ class TestLast28DaysWeeks:
         newest_end = weeks[0][1]
         assert oldest_start <= today - _dt.timedelta(days=27)
         assert newest_end >= today
+
+
+# ---------------------------------------------------------------------------
+# last_4_calendar_weeks
+# ---------------------------------------------------------------------------
+class TestLast4CalendarWeeks:
+    """Exact 4-week helper: always 4 Mon–Sun blocks, newest first."""
+
+    def test_always_4_weeks_on_wednesday(self):
+        today = _dt.date(2024, 6, 19)  # Wednesday
+        weeks = last_4_calendar_weeks(today)
+        assert len(weeks) == 4
+
+    def test_always_4_weeks_on_sunday(self):
+        today = _dt.date(2024, 6, 23)  # Sunday
+        weeks = last_4_calendar_weeks(today)
+        assert len(weeks) == 4
+
+    def test_always_4_weeks_on_monday(self):
+        today = _dt.date(2024, 6, 17)  # Monday
+        weeks = last_4_calendar_weeks(today)
+        assert len(weeks) == 4
+
+    def test_all_weeks_are_mon_sun(self):
+        today = _dt.date(2024, 6, 19)
+        weeks = last_4_calendar_weeks(today)
+        for mon, sun in weeks:
+            assert mon.weekday() == 0, f"{mon} is not Monday"
+            assert sun.weekday() == 6, f"{sun} is not Sunday"
+            assert (sun - mon).days == 6
+
+    def test_newest_week_contains_today(self):
+        today = _dt.date(2024, 6, 19)  # Wednesday
+        weeks = last_4_calendar_weeks(today)
+        mon, sun = weeks[0]
+        assert mon <= today <= sun
+
+    def test_weeks_are_consecutive_backwards(self):
+        today = _dt.date(2024, 6, 19)
+        weeks = last_4_calendar_weeks(today)
+        for i in range(len(weeks) - 1):
+            current_mon, _ = weeks[i]
+            prev_mon, _ = weeks[i + 1]
+            assert (current_mon - prev_mon).days == 7
+
+    def test_sunday_newest_week_ends_today(self):
+        """On Sunday, the newest week's Sunday should equal today."""
+        today = _dt.date(2024, 6, 23)  # Sunday
+        weeks = last_4_calendar_weeks(today)
+        _, sun = weeks[0]
+        assert sun == today
+
+    def test_monday_newest_week_starts_today(self):
+        """On Monday, the newest week's Monday should equal today."""
+        today = _dt.date(2024, 6, 17)  # Monday
+        weeks = last_4_calendar_weeks(today)
+        mon, _ = weeks[0]
+        assert mon == today
