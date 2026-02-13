@@ -5,6 +5,10 @@ description or a photo of your meal and the bot uses OpenAI to estimate
 calories, protein, carbs, and fat. View daily/weekly/monthly stats, set
 personal goals, and manage timezone.
 
+## Документация
+
+Полная документация проекта: **[docs/README.md](docs/README.md)**
+
 ## Stack
 
 - Python 3.12, Poetry 2.x
