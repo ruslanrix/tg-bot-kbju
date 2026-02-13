@@ -1,9 +1,10 @@
-"""Tests for app.bot.formatters (Step 08, D5/FEAT-07).
+"""Tests for app.bot.formatters (FIX-02, FIX-03, Step 07).
 
 Verifies:
-- Weight/volume/caffeine totals shown when present.
-- Per-ingredient weight/volume shown in ingredient lines.
-- Backward compat: no totals section when all fields are None.
+- Ingredient lines show only grams + kcal (localized units).
+- No Totals/Итого block in output.
+- Caffeine appears after calories, before macros (only when present).
+- EN/RU locale formatting.
 """
 
 from __future__ import annotations
@@ -32,76 +33,144 @@ def _make_analysis(**overrides: object) -> NutritionAnalysis:
 
 
 # ---------------------------------------------------------------------------
-# Total weight / volume / caffeine
+# FIX-03: No Totals block; caffeine repositioned
 # ---------------------------------------------------------------------------
 
 
-class TestTotalsSection:
-    def test_weight_shown(self) -> None:
+class TestNoTotalsBlock:
+    """Totals/Итого section must never appear."""
+
+    def test_no_totals_with_weight(self) -> None:
         text = format_meal_saved(_make_analysis(weight_g=300))
-        assert "Weight: 300g" in text
-        assert "Totals" in text
+        assert "Totals" not in text
 
-    def test_volume_shown(self) -> None:
+    def test_no_totals_with_volume(self) -> None:
         text = format_meal_saved(_make_analysis(volume_ml=250))
-        assert "Volume: 250ml" in text
+        assert "Totals" not in text
 
-    def test_caffeine_shown(self) -> None:
+    def test_no_totals_with_caffeine(self) -> None:
         text = format_meal_saved(_make_analysis(caffeine_mg=95))
-        assert "Caffeine: 95mg" in text
+        assert "Totals" not in text
 
-    def test_all_totals_shown(self) -> None:
+    def test_no_totals_with_all(self) -> None:
         text = format_meal_saved(
             _make_analysis(weight_g=350, volume_ml=200, caffeine_mg=80)
         )
-        assert "Weight: 350g" in text
-        assert "Volume: 200ml" in text
-        assert "Caffeine: 80mg" in text
+        assert "Totals" not in text
+        assert "Итого" not in text
 
-    def test_no_totals_when_all_none(self) -> None:
-        """When weight/volume/caffeine are all None, Totals section is omitted."""
-        text = format_meal_saved(
-            _make_analysis(weight_g=None, volume_ml=None, caffeine_mg=None)
-        )
+    def test_no_totals_draft(self) -> None:
+        text = format_meal_draft(_make_analysis(weight_g=200))
         assert "Totals" not in text
 
-    def test_draft_also_shows_totals(self) -> None:
-        text = format_meal_draft(_make_analysis(weight_g=200))
-        assert "Weight: 200g" in text
-        assert "Totals" in text
+    def test_no_weight_volume_in_body(self) -> None:
+        """Weight/Volume labels must not appear in meal body."""
+        text = format_meal_saved(
+            _make_analysis(weight_g=350, volume_ml=200)
+        )
+        assert "Weight:" not in text
+        assert "Volume:" not in text
+        assert "Вес:" not in text
+        assert "Объём:" not in text
+
+
+class TestCaffeinePlacement:
+    """Caffeine appears after calories, before macros."""
+
+    def test_caffeine_shown_when_present(self) -> None:
+        text = format_meal_saved(_make_analysis(caffeine_mg=95))
+        assert "Caffeine: 95mg" in text
+
+    def test_caffeine_omitted_when_none(self) -> None:
+        text = format_meal_saved(_make_analysis(caffeine_mg=None))
+        assert "Caffeine" not in text
+        assert "Кофеин" not in text
+
+    def test_caffeine_after_calories_before_macros(self) -> None:
+        text = format_meal_saved(_make_analysis(caffeine_mg=95))
+        cal_pos = text.index("400kcal")
+        caff_pos = text.index("Caffeine")
+        macros_pos = text.index("Macros")
+        assert cal_pos < caff_pos < macros_pos
+
+    def test_caffeine_ru_locale(self) -> None:
+        text = format_meal_saved(_make_analysis(caffeine_mg=95), lang="RU")
+        assert "Кофеин: 95mg" in text
 
 
 # ---------------------------------------------------------------------------
-# Per-ingredient weight / volume
+# FIX-02: Ingredient line format — grams + kcal only
 # ---------------------------------------------------------------------------
 
 
-class TestIngredientFormatting:
-    def test_ingredient_with_weight(self) -> None:
+class TestIngredientFormat:
+    """Ingredient lines show: • Name (Xg, Ykcal)."""
+
+    def test_with_weight(self) -> None:
         ing = Ingredient(name="rice", amount="1 cup", calories_kcal=200, weight_g=180)
         text = format_meal_saved(_make_analysis(likely_ingredients=[ing]))
-        assert "rice (1 cup, 200kcal, 180g)" in text
+        assert "• rice (180g, 200kcal)" in text
 
-    def test_ingredient_with_volume(self) -> None:
+    def test_volume_converted_to_grams(self) -> None:
+        """volume_ml is converted to grams at 1:1."""
         ing = Ingredient(name="milk", amount="1 glass", calories_kcal=90, volume_ml=250)
         text = format_meal_saved(_make_analysis(likely_ingredients=[ing]))
-        assert "milk (1 glass, 90kcal, 250ml)" in text
+        assert "• milk (250g, 90kcal)" in text
 
-    def test_ingredient_with_both(self) -> None:
+    def test_weight_preferred_over_volume(self) -> None:
         ing = Ingredient(
             name="soup", amount="1 bowl", calories_kcal=150,
             weight_g=350, volume_ml=300,
         )
         text = format_meal_saved(_make_analysis(likely_ingredients=[ing]))
-        assert "soup (1 bowl, 150kcal, 350g, 300ml)" in text
+        assert "• soup (350g, 150kcal)" in text
 
-    def test_ingredient_without_weight_volume(self) -> None:
-        """Backward compat: no weight/volume in ingredient line."""
+    def test_no_weight_no_volume_fallback_zero(self) -> None:
         ing = Ingredient(name="chicken", amount="100g", calories_kcal=165)
         text = format_meal_saved(_make_analysis(likely_ingredients=[ing]))
-        assert "chicken (100g, 165kcal)" in text
-        # No trailing "g" or "ml" beyond the amount
-        assert "chicken (100g, 165kcal)" in text
+        assert "• chicken (0g, 165kcal)" in text
+
+    def test_rounding(self) -> None:
+        ing = Ingredient(name="rice", amount="1 cup", calories_kcal=200, weight_g=180.7)
+        text = format_meal_saved(_make_analysis(likely_ingredients=[ing]))
+        assert "• rice (181g, 200kcal)" in text
+
+    def test_no_ml_in_output(self) -> None:
+        """Output must never contain 'ml' in ingredient lines."""
+        ing = Ingredient(name="milk", amount="1 glass", calories_kcal=90, volume_ml=250)
+        text = format_meal_saved(_make_analysis(likely_ingredients=[ing]))
+        # Find ingredient section and check no ml
+        lines = text.split("\n")
+        ing_lines = [l for l in lines if l.startswith("•") and "milk" in l]
+        for line in ing_lines:
+            assert "ml" not in line
+
+    def test_no_cup_in_output(self) -> None:
+        """Raw amount descriptors like 'cup' must not appear."""
+        ing = Ingredient(name="rice", amount="1 cup", calories_kcal=200, weight_g=180)
+        text = format_meal_saved(_make_analysis(likely_ingredients=[ing]))
+        lines = text.split("\n")
+        ing_lines = [l for l in lines if l.startswith("•") and "rice" in l]
+        for line in ing_lines:
+            assert "cup" not in line
+
+
+class TestIngredientFormatRU:
+    """RU locale uses г/ккал."""
+
+    def test_ru_units(self) -> None:
+        ing = Ingredient(name="рис", amount="1 стакан", calories_kcal=200, weight_g=180)
+        text = format_meal_saved(
+            _make_analysis(likely_ingredients=[ing]), lang="RU"
+        )
+        assert "• рис (180г, 200ккал)" in text
+
+    def test_ru_volume_converted(self) -> None:
+        ing = Ingredient(name="молоко", amount="1 стакан", calories_kcal=90, volume_ml=250)
+        text = format_meal_saved(
+            _make_analysis(likely_ingredients=[ing]), lang="RU"
+        )
+        assert "• молоко (250г, 90ккал)" in text
 
 
 # ---------------------------------------------------------------------------
@@ -127,3 +196,13 @@ class TestBasicFormatting:
     def test_calories_present(self) -> None:
         text = format_meal_saved(_make_analysis())
         assert "400kcal" in text
+
+    def test_macros_ru(self) -> None:
+        text = format_meal_saved(_make_analysis(), lang="RU")
+        assert "Белки: 25.0г" in text
+        assert "Углеводы: 40.0г" in text
+        assert "Жиры: 15.0г" in text
+
+    def test_calories_ru(self) -> None:
+        text = format_meal_saved(_make_analysis(), lang="RU")
+        assert "400ккал" in text
