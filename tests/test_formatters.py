@@ -142,7 +142,7 @@ class TestIngredientFormat:
         assert "• chicken (165kcal)" in text
         # Ingredient line must not contain fabricated "0g"
         lines = text.split("\n")
-        ing_lines = [l for l in lines if l.startswith("•") and "chicken" in l]
+        ing_lines = [ln for ln in lines if ln.startswith("•") and "chicken" in ln]
         for line in ing_lines:
             assert "0g" not in line
 
@@ -157,7 +157,7 @@ class TestIngredientFormat:
         text = format_meal_saved(_make_analysis(likely_ingredients=[ing]))
         # Find ingredient section and check no ml
         lines = text.split("\n")
-        ing_lines = [l for l in lines if l.startswith("•") and "milk" in l]
+        ing_lines = [ln for ln in lines if ln.startswith("•") and "milk" in ln]
         for line in ing_lines:
             assert "ml" not in line
 
@@ -166,7 +166,7 @@ class TestIngredientFormat:
         ing = Ingredient(name="rice", amount="1 cup", calories_kcal=200, weight_g=180)
         text = format_meal_saved(_make_analysis(likely_ingredients=[ing]))
         lines = text.split("\n")
-        ing_lines = [l for l in lines if l.startswith("•") and "rice" in l]
+        ing_lines = [ln for ln in lines if ln.startswith("•") and "rice" in ln]
         for line in ing_lines:
             assert "cup" not in line
 
@@ -382,8 +382,8 @@ class TestFourWeekStatsFormat:
         # = 1 + 4*(blank + label + data) = 1 + 12 = 13
         # But first block has no leading blank → header, blank, label, data, blank, label, data...
         # Let's count week label lines
-        week_lines = [l for l in lines if l.startswith("Week ")]
-        data_lines = [l for l in lines if "kcal |" in l]
+        week_lines = [ln for ln in lines if ln.startswith("Week ")]
+        data_lines = [ln for ln in lines if "kcal |" in ln]
         assert len(week_lines) == 4
         assert len(data_lines) == 4
 
