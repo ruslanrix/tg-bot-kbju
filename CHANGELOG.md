@@ -7,7 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.3] - 2026-02-13
 
-Stats formatting improvements — details added on release.
+### Fixed
+- **4-week stats:** always exactly 4 calendar weeks (Mon–Sun), replacing
+  the old helper that could produce 4–5 blocks depending on weekday.
+- **Integer rounding:** `round()` instead of `int()` in weekly and 4-week
+  formatters — no more truncation (e.g. 65.7 → 66, not 65).
+
+### Changed
+- **Weekly stats template:** locale-aware compact format
+  `Mon 17.06: 1850 kcal | P/C/F 120/200/65` (EN) /
+  `Пн 17.06: 1850 ккал | Б/У/Ж 120/200/65` (RU).
+- **4-week stats template:** 2-line blocks per week
+  (`Week 1 (DD.MM-DD.MM)` + `1850 kcal | P/C/F …`).
+- **Date format:** `DD.MM` in weekly and 4-week stats (both locales),
+  no more English-only `strftime` weekdays.
+- **Bold headers:** stats messages use `<b>` HTML headers via opt-in
+  `bold_header_html=True`; `parse_mode="HTML"` in all stats callbacks.
 
 ## [1.1.2] - 2026-02-13
 
