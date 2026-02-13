@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.formatters import format_four_week_stats, format_today_stats, format_weekly_stats
 from app.bot.keyboards import stats_keyboard
-from app.core.time import last_7_days, last_28_days_weeks, today_local, user_timezone
+from app.core.time import last_4_calendar_weeks, last_7_days, today_local, user_timezone
 from app.db.repos import UserRepo
 from app.i18n import t
 from app.reports.stats import four_week_stats, today_stats, weekly_stats
@@ -84,7 +84,7 @@ async def on_stats_4weeks(callback: CallbackQuery, session: AsyncSession) -> Non
     tz = user_timezone(user.tz_mode, user.tz_name, user.tz_offset_minutes)
     local_d = today_local(tz)
 
-    weeks = last_28_days_weeks(local_d)
+    weeks = last_4_calendar_weeks(local_d)
     stats = await four_week_stats(session, user.id, weeks)
     text = format_four_week_stats(stats, lang)
 
