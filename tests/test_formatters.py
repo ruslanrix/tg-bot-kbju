@@ -9,7 +9,11 @@ Verifies:
 
 from __future__ import annotations
 
-from app.bot.formatters import format_meal_draft, format_meal_saved
+import datetime as _dt
+import re
+
+from app.bot.formatters import format_meal_draft, format_meal_saved, format_weekly_stats
+from app.i18n import t as tr
 from app.services.nutrition_ai import Ingredient, NutritionAnalysis
 
 
@@ -212,3 +216,86 @@ class TestBasicFormatting:
     def test_calories_ru(self) -> None:
         text = format_meal_saved(_make_analysis(), lang="RU")
         assert "400ккал" in text
+
+
+# ---------------------------------------------------------------------------
+# Weekly stats formatting (v1.1.3 Step 04)
+# ---------------------------------------------------------------------------
+
+
+def _make_day_stats(d: _dt.date, cal: int = 0, p: float = 0, c: float = 0, f: float = 0):
+    """Build a DayStats dict for testing."""
+    return {"date": d, "calories_kcal": cal, "protein_g": p, "carbs_g": c, "fat_g": f}
+
+
+class TestWeeklyStatsFormat:
+    """Weekly stats output must match exact locale-aware template."""
+
+    _base = _dt.date(2024, 6, 19)  # Wednesday
+    _days = [
+        _make_day_stats(_dt.date(2024, 6, 19), 1850, 120.5, 200.3, 65.7),
+        _make_day_stats(_dt.date(2024, 6, 18), 1600, 100.0, 180.0, 55.0),
+        _make_day_stats(_dt.date(2024, 6, 17), 2000, 140.0, 220.0, 70.0),
+        _make_day_stats(_dt.date(2024, 6, 16), 0, 0.0, 0.0, 0.0),
+        _make_day_stats(_dt.date(2024, 6, 15), 1500, 90.0, 170.0, 50.0),
+        _make_day_stats(_dt.date(2024, 6, 14), 1700, 110.0, 190.0, 60.0),
+        _make_day_stats(_dt.date(2024, 6, 13), 1900, 130.0, 210.0, 68.0),
+    ]
+
+    def test_en_exact_template(self) -> None:
+        text = format_weekly_stats(self._days, "EN")
+        assert "Wed 19.06: 1850 kcal | P/C/F 120/200/65" in text
+
+    def test_ru_weekday_abbreviation(self) -> None:
+        text = format_weekly_stats(self._days, "RU")
+        assert "Ср 19.06:" in text  # Среда
+
+    def test_ru_kcal_unit(self) -> None:
+        text = format_weekly_stats(self._days, "RU")
+        assert "1850 ккал" in text
+
+    def test_ru_macro_label(self) -> None:
+        text = format_weekly_stats(self._days, "RU")
+        assert "Б/У/Ж 120/200/65" in text
+
+    def test_date_format_dd_mm(self) -> None:
+        """Dates should be DD.MM, not English strftime."""
+        text = format_weekly_stats(self._days, "EN")
+        assert "19.06" in text
+        assert "Jun" not in text
+        assert "Wed Jun" not in text
+
+    def test_integer_only_values(self) -> None:
+        """No decimal points in numeric stats values."""
+        text = format_weekly_stats(self._days, "EN")
+        # 120.5 should display as 120, not 120.5
+        assert "120.5" not in text
+        # No trailing .0 on numbers (but DD.MM dates are fine)
+        assert "100.0" not in text
+        assert "55.0" not in text
+
+    def test_zero_day_shown(self) -> None:
+        """Zero-meal day should be shown, not omitted."""
+        text = format_weekly_stats(self._days, "EN")
+        assert "Sun 16.06: 0 kcal | P/C/F 0/0/0" in text
+
+    def test_slash_macro_format(self) -> None:
+        """Old P:{x}g C:{y}g F:{z}g format must not appear."""
+        text = format_weekly_stats(self._days, "EN")
+        assert "P:" not in text
+        assert "C:" not in text
+        assert "F:" not in text
+
+    def test_exactly_7_data_lines(self) -> None:
+        text = format_weekly_stats(self._days, "EN")
+        # Pattern: DOW DD.MM: ...
+        data_lines = re.findall(r"^\w+ \d{2}\.\d{2}:", text, re.MULTILINE)
+        assert len(data_lines) == 7
+
+    def test_header_present(self) -> None:
+        text = format_weekly_stats(self._days, "EN")
+        assert tr("fmt_weekly_stats_header", "EN") in text
+
+    def test_ru_header_present(self) -> None:
+        text = format_weekly_stats(self._days, "RU")
+        assert tr("fmt_weekly_stats_header", "RU") in text
