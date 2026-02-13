@@ -18,6 +18,7 @@ from aiogram import Bot, F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,6 +48,9 @@ ai_service: NutritionAIService | None = None
 max_photo_bytes: int = 5 * 1024 * 1024
 edit_window_hours: int = 48
 delete_window_hours: int = 48
+EDIT_TIMEOUT: int = 300  # seconds (5 min)
+
+_timeout_tasks: dict[int, asyncio.Task[None]] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -55,9 +59,85 @@ delete_window_hours: int = 48
 
 
 class EditMealStates(StatesGroup):
-    """FSM states for editing a saved meal."""
+    """FSM states for editing a saved meal.
+
+    FSM data contract (set by on_saved_edit, consumed by helpers):
+        edit_meal_id: str          -- UUID of meal being edited
+        prompt_chat_id: int        -- chat where prompt message lives
+        prompt_message_id: int     -- message_id of the prompt message
+        session_token: str         -- uuid4 hex to invalidate stale callbacks
+        deadline: float            -- UTC timestamp when session expires
+    """
 
     waiting_for_text = State()
+
+
+# ---------------------------------------------------------------------------
+# Edit-session lifecycle helpers (FEAT-04)
+# ---------------------------------------------------------------------------
+
+
+async def _timeout_coro(
+    user_id: int,
+    chat_id: int,
+    message_id: int,
+    session_token: str,  # noqa: ARG001
+    bot: Bot,
+    lang: str,
+) -> None:
+    """Sleep until deadline, then edit prompt to timeout status."""
+    try:
+        await asyncio.sleep(EDIT_TIMEOUT)
+    except asyncio.CancelledError:
+        return
+
+    # Verify this task is still the active one for this user
+    if _timeout_tasks.get(user_id) is not asyncio.current_task():
+        return
+
+    _timeout_tasks.pop(user_id, None)
+
+    try:
+        await bot.edit_message_text(
+            text=t("edit_feedback_timeout", lang),
+            chat_id=chat_id,
+            message_id=message_id,
+            reply_markup=None,
+        )
+    except TelegramBadRequest as exc:
+        logger.debug("Timeout edit failed (message gone?): %s", exc)
+    except Exception:
+        logger.exception("Unexpected error editing timeout message")
+
+
+def start_timeout_task(
+    user_id: int,
+    chat_id: int,
+    msg_id: int,
+    session_token: str,
+    bot: Bot,
+    lang: str,
+) -> None:
+    """Start (or restart) the edit-session timeout for a user."""
+    cancel_timeout_task(user_id)
+    task = asyncio.create_task(
+        _timeout_coro(user_id, chat_id, msg_id, session_token, bot, lang),
+        name=f"edit_timeout_{user_id}",
+    )
+    _timeout_tasks[user_id] = task
+
+
+def cancel_timeout_task(user_id: int) -> None:
+    """Cancel any active timeout task for the given user (no-op if none)."""
+    task = _timeout_tasks.pop(user_id, None)
+    if task is not None and not task.done():
+        task.cancel()
+
+
+async def finalize_edit_session(state: FSMContext, user_id: int) -> None:
+    """Cancel timeout and fully clear the edit FSM state."""
+    cancel_timeout_task(user_id)
+    await state.clear()
 
 
 # ---------------------------------------------------------------------------
