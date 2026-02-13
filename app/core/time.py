@@ -103,3 +103,23 @@ def last_28_days_weeks(today: _dt.date) -> list[tuple[_dt.date, _dt.date]]:
         mon -= _dt.timedelta(weeks=1)
 
     return weeks  # newest week first
+
+
+def last_4_calendar_weeks(today: _dt.date) -> list[tuple[_dt.date, _dt.date]]:
+    """Return exactly 4 Mon–Sun calendar weeks, newest first.
+
+    Week 1 is the current week containing *today*.
+    Weeks 2–4 are the three preceding full Mon–Sun weeks.
+
+    Unlike :func:`last_28_days_weeks`, this always returns exactly 4
+    tuples regardless of which weekday *today* falls on.
+
+    Returns:
+        A list of 4 ``(monday, sunday)`` tuples, newest first.
+    """
+    current_monday = today - _dt.timedelta(days=today.weekday())
+    return [
+        (current_monday - _dt.timedelta(weeks=i),
+         current_monday - _dt.timedelta(weeks=i) + _dt.timedelta(days=6))
+        for i in range(4)
+    ]
