@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.handlers.meal import _handle_edit_text, on_saved_edit
+from app.bot.handlers.meal import _handle_edit_text, cancel_timeout_task, on_saved_edit
 from app.db.models import MealEntry, User
 from app.i18n import t
 
@@ -468,3 +468,43 @@ class TestLateEditSubmit:
 
         msg.reply.assert_called_once()
         assert "not found" in msg.reply.call_args.args[0].lower()
+
+
+# ---------------------------------------------------------------------------
+# P2 regression: _handle_edit_text must cancel timeout task
+# ---------------------------------------------------------------------------
+
+
+class TestEditTextCancelsTimeout:
+    """Submitting edit text must cancel the active timeout task."""
+
+    @pytest.mark.asyncio
+    async def test_timeout_cancelled_on_text_submit(self) -> None:
+        """_handle_edit_text calls finalize_edit_session, not bare state.clear()."""
+        user = _make_user()
+        meal = _make_meal(user, consumed_hours_ago=10.0)
+        msg = _make_edit_message()
+
+        state = AsyncMock()
+        state.get_data = AsyncMock(return_value={"edit_meal_id": str(meal.id)})
+        state.clear = AsyncMock()
+
+        bot = AsyncMock()
+
+        with (
+            patch("app.bot.handlers.meal.UserRepo") as mock_user_repo,
+            patch("app.bot.handlers.meal.MealRepo") as mock_meal_repo,
+            patch("app.bot.handlers.meal._check_limits", return_value=True),
+            patch("app.bot.handlers.meal._analyze_with_typing", return_value=None),
+            patch("app.bot.handlers.meal.edit_window_hours", 48),
+            patch("app.bot.handlers.meal.cancel_timeout_task") as mock_cancel,
+        ):
+            mock_user_repo.get_or_create = AsyncMock(return_value=user)
+            mock_meal_repo.get_by_id = AsyncMock(return_value=meal)
+
+            session = AsyncMock(spec=AsyncSession)
+            await _handle_edit_text(msg, session, bot, state)
+
+        # finalize_edit_session calls cancel_timeout_task then state.clear
+        mock_cancel.assert_called_once_with(msg.from_user.id)
+        state.clear.assert_called_once()

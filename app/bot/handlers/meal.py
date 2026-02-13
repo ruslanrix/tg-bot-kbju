@@ -739,7 +739,7 @@ async def _handle_edit_text(
     edit_meal_id_str = data.get("edit_meal_id")
     edit_meal_id = uuid.UUID(edit_meal_id_str) if edit_meal_id_str else None
 
-    await state.clear()
+    await finalize_edit_session(state, message.from_user.id)
 
     user = await UserRepo.get_or_create(session, message.from_user.id)
     lang = user.language
