@@ -800,6 +800,11 @@ async def _handle_edit_text(
     if analysis is None:
         return
 
+    # Check if analysis will result in a save (not reject/sanity-fail)
+    will_save = (
+        analysis.action == "save" and sanity_check(analysis) is None
+    )
+
     await _handle_analysis_result(
         message,
         session,
@@ -811,8 +816,8 @@ async def _handle_edit_text(
         lang=lang,
     )
 
-    # Edit prompt message to show "Updated" status and remove keyboard
-    if prompt_chat_id and prompt_message_id:
+    # Edit prompt message to show "Updated" only on actual save
+    if will_save and prompt_chat_id and prompt_message_id:
         try:
             await bot.edit_message_text(
                 text=t("edit_feedback_updated", lang),
