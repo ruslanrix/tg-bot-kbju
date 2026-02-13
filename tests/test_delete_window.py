@@ -120,6 +120,9 @@ class TestSavedDeleteWindow:
         mock_meal_repo.soft_delete.assert_called_once()
         cb.message.edit_text.assert_called_once()
         assert "Deleted" in cb.message.edit_text.call_args.args[0]
+        # FIX-01: no standalone emoji follow-up
+        for call in cb.message.answer.call_args_list:
+            assert "👇" not in str(call)
 
     @pytest.mark.asyncio
     async def test_delete_outside_window_blocked(self) -> None:
@@ -314,6 +317,9 @@ class TestHistoryDeleteWindow:
         mock_meal_repo.soft_delete.assert_called_once()
         cb.message.edit_text.assert_called_once()
         assert "Deleted" in cb.message.edit_text.call_args.args[0]
+        # FIX-01: no standalone emoji follow-up
+        for call in cb.message.answer.call_args_list:
+            assert "👇" not in str(call)
 
     @pytest.mark.asyncio
     async def test_delete_outside_window_blocked(self) -> None:
