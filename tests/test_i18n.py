@@ -249,6 +249,17 @@ class TestKeyCoverage:
             "stub_subscription",
             "reminder_text",
             "nav_arrow",
+            "edit_feedback_prompt",
+            "edit_feedback_photo_warning",
+            "edit_feedback_timeout",
+            "edit_feedback_updated",
+            "edit_feedback_replaced",
+            "edit_feedback_ok",
+            "edit_feedback_deleted",
+            "kb_edit_ok",
+            "kb_edit_delete",
+            "fmt_unit_g",
+            "fmt_unit_kcal",
         ],
     )
     def test_key_exists_in_en(self, key: str) -> None:
@@ -274,6 +285,15 @@ class TestKeyCoverage:
             "goals_prompt",
             "tz_saved",
             "reminder_text",
+            "edit_feedback_prompt",
+            "edit_feedback_photo_warning",
+            "edit_feedback_timeout",
+            "edit_feedback_updated",
+            "edit_feedback_replaced",
+            "edit_feedback_ok",
+            "edit_feedback_deleted",
+            "kb_edit_ok",
+            "kb_edit_delete",
         ],
     )
     def test_key_differs_en_ru(self, key: str) -> None:
