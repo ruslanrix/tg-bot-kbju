@@ -484,6 +484,102 @@ async def on_saved_delete(callback: CallbackQuery, session: AsyncSession) -> Non
 
 
 # ---------------------------------------------------------------------------
+# Edit feedback prompt callbacks (FEAT-04)
+# ---------------------------------------------------------------------------
+
+
+@router.callback_query(F.data.startswith("edit_ok:"))
+async def on_edit_ok(
+    callback: CallbackQuery, session: AsyncSession, state: FSMContext
+) -> None:
+    """User clicked '✅ It looks OK' — finalize session, update prompt status."""
+    if callback.from_user is None or callback.data is None:
+        return
+
+    user = await UserRepo.get_or_create(session, callback.from_user.id)
+    lang = user.language
+
+    # Validate active session — reject stale callbacks
+    data = await state.get_data()
+    if not data.get("edit_meal_id"):
+        await callback.answer(t("edit_feedback_timeout", lang), show_alert=True)
+        return
+
+    # Finalize edit session (cancel timeout + clear FSM)
+    await finalize_edit_session(state, callback.from_user.id)
+
+    # Edit prompt to OK status, remove keyboard
+    try:
+        await callback.message.edit_text(  # type: ignore[union-attr]
+            t("edit_feedback_ok", lang),
+            reply_markup=None,
+        )
+    except TelegramBadRequest:
+        pass  # prompt already modified
+
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("edit_delete:"))
+async def on_edit_delete(
+    callback: CallbackQuery, session: AsyncSession, state: FSMContext
+) -> None:
+    """User clicked '🛑 Delete it' — soft-delete meal, finalize session."""
+    if callback.from_user is None or callback.data is None:
+        return
+
+    meal_id_str = callback.data.split(":", 1)[1]
+
+    try:
+        meal_uuid = uuid.UUID(meal_id_str)
+    except ValueError:
+        await callback.answer(t("meal_not_found", "EN"), show_alert=True)
+        return
+
+    user = await UserRepo.get_or_create(session, callback.from_user.id)
+    lang = user.language
+
+    # Validate active session and meal_id match — reject stale callbacks
+    data = await state.get_data()
+    active_meal_id = data.get("edit_meal_id")
+    if not active_meal_id or active_meal_id != meal_id_str:
+        await callback.answer(t("edit_feedback_timeout", lang), show_alert=True)
+        return
+    meal = await MealRepo.get_by_id(session, meal_uuid, user.id)
+    if meal is None:
+        await callback.answer(t("meal_not_found", lang), show_alert=True)
+        return
+
+    # Delete window guard
+    age = datetime.now(timezone.utc) - meal.consumed_at_utc
+    if age.total_seconds() > delete_window_hours * 3600:
+        await callback.answer(
+            t("msg_delete_window_expired", lang).format(hours=delete_window_hours),
+            show_alert=True,
+        )
+        return
+
+    deleted = await MealRepo.soft_delete(session, meal_uuid, user.id)
+    if not deleted:
+        await callback.answer(t("meal_not_found", lang), show_alert=True)
+        return
+
+    # Finalize edit session (cancel timeout + clear FSM)
+    await finalize_edit_session(state, callback.from_user.id)
+
+    # Edit prompt to deleted status, remove keyboard
+    try:
+        await callback.message.edit_text(  # type: ignore[union-attr]
+            t("edit_feedback_deleted", lang),
+            reply_markup=None,
+        )
+    except TelegramBadRequest:
+        pass  # prompt already modified
+
+    await callback.answer()
+
+
+# ---------------------------------------------------------------------------
 # History delete callback
 # ---------------------------------------------------------------------------
 
