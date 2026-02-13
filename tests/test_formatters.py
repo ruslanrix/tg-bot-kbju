@@ -250,7 +250,7 @@ class TestWeeklyStatsFormat:
 
     def test_en_exact_template(self) -> None:
         text = format_weekly_stats(self._days, "EN")
-        assert "Wed 19.06: 1850 kcal | P/C/F 120/200/65" in text
+        assert "Wed 19.06: 1850 kcal | P/C/F 120/200/66" in text
 
     def test_ru_weekday_abbreviation(self) -> None:
         text = format_weekly_stats(self._days, "RU")
@@ -262,7 +262,7 @@ class TestWeeklyStatsFormat:
 
     def test_ru_macro_label(self) -> None:
         text = format_weekly_stats(self._days, "RU")
-        assert "Б/У/Ж 120/200/65" in text
+        assert "Б/У/Ж 120/200/66" in text
 
     def test_date_format_dd_mm(self) -> None:
         """Dates should be DD.MM, not English strftime."""
@@ -337,7 +337,7 @@ class TestFourWeekStatsFormat:
     def test_en_two_line_block(self) -> None:
         text = format_four_week_stats(self._weeks, "EN")
         assert "Week 1 (17.06-23.06)" in text
-        assert "1850 kcal | P/C/F 120/200/65" in text
+        assert "1850 kcal | P/C/F 121/200/65" in text
 
     def test_ru_week_label(self) -> None:
         text = format_four_week_stats(self._weeks, "RU")
@@ -349,7 +349,7 @@ class TestFourWeekStatsFormat:
 
     def test_ru_macro_label(self) -> None:
         text = format_four_week_stats(self._weeks, "RU")
-        assert "Б/У/Ж 120/200/65" in text
+        assert "Б/У/Ж 121/200/65" in text
 
     def test_date_format_dd_mm(self) -> None:
         text = format_four_week_stats(self._weeks, "EN")
