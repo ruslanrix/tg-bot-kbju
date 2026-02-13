@@ -91,6 +91,22 @@ def format_meal_draft(analysis: NutritionAnalysis, lang: str = "EN") -> str:
 
 
 # ---------------------------------------------------------------------------
+# Stats formatting helpers
+# ---------------------------------------------------------------------------
+
+
+def _weekday_abbr(d: date, lang: str) -> str:
+    """Locale-aware weekday abbreviation (Mon–Sun)."""
+    names = tr("fmt_weekdays", lang).split(",")
+    return names[d.weekday()]
+
+
+def _format_date_short(d: date) -> str:
+    """Format date as DD.MM."""
+    return f"{d.day:02d}.{d.month:02d}"
+
+
+# ---------------------------------------------------------------------------
 # Today's Stats block (spec §3.4)
 # ---------------------------------------------------------------------------
 
@@ -112,17 +128,25 @@ def format_today_stats(stats: DayStats, lang: str = "EN") -> str:
 
 
 def format_weekly_stats(days: list[DayStats], lang: str = "EN") -> str:
-    """Format per-day breakdown for the last 7 days."""
+    """Format per-day breakdown for the last 7 days.
+
+    Template:
+        EN: ``Mon 17.06: 1850 kcal | P/C/F 120/200/65``
+        RU: ``Пн 17.06: 1850 ккал | Б/У/Ж 120/200/65``
+    """
+    kcal_unit = tr("fmt_unit_kcal", lang)
+    macro_label = tr("fmt_macro_pcf", lang)
     lines: list[str] = [tr("fmt_weekly_stats_header", lang)]
     lines.append("")
     for day in days:
         d: date = day["date"]
-        cal = day["calories_kcal"]
-        p = day["protein_g"]
-        c = day["carbs_g"]
-        f = day["fat_g"]
-        label = d.strftime("%a %b %d")
-        lines.append(f"{label}: {cal}kcal | P:{p}g C:{c}g F:{f}g")
+        dow = _weekday_abbr(d, lang)
+        dd_mm = _format_date_short(d)
+        cal = int(day["calories_kcal"])
+        p = int(day["protein_g"])
+        c = int(day["carbs_g"])
+        f = int(day["fat_g"])
+        lines.append(f"{dow} {dd_mm}: {cal} {kcal_unit} | {macro_label} {p}/{c}/{f}")
     return "\n".join(lines)
 
 

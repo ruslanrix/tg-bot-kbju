@@ -88,6 +88,8 @@ STRINGS: dict[str, str] = {
     "fmt_4week_stats_header": "📊 4-Week Stats (Daily Averages)",
     "fmt_week_label": "Week",
     "fmt_no_meals": "No meals recorded yet.",
+    "fmt_weekdays": "Mon,Tue,Wed,Thu,Fri,Sat,Sun",
+    "fmt_macro_pcf": "P/C/F",
 
     # ---------------------------------------------------------------------------
     # Reply keyboard buttons (keyboards.py)
