@@ -80,6 +80,8 @@ STRINGS: dict[str, str] = {
     "fmt_weight": "Вес",
     "fmt_volume": "Объём",
     "fmt_caffeine": "Кофеин",
+    "fmt_unit_g": "г",
+    "fmt_unit_kcal": "ккал",
     "fmt_likely_ingredients": "Вероятные ингредиенты",
     "fmt_today_stats_header": "📊 Статистика за сегодня",
     "fmt_weekly_stats_header": "📊 Статистика за неделю (7 дней)",
