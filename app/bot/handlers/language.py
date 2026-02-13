@@ -52,7 +52,9 @@ async def on_language_selected(callback: CallbackQuery, session: AsyncSession) -
 
     label = _LANG_LABELS[lang]
     await callback.message.edit_text(t("lang_set_confirmation", lang).format(label=label))  # type: ignore[union-attr]
+    # Refresh reply keyboard with newly-localized button labels
     await callback.message.answer(  # type: ignore[union-attr]
-        "👇", reply_markup=main_keyboard(lang)
+        t("lang_set_confirmation", lang).format(label=label),
+        reply_markup=main_keyboard(lang),
     )
     await callback.answer()

@@ -8,7 +8,7 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.formatters import format_four_week_stats, format_today_stats, format_weekly_stats
-from app.bot.keyboards import main_keyboard, stats_keyboard
+from app.bot.keyboards import stats_keyboard
 from app.core.time import last_7_days, last_28_days_weeks, today_local, user_timezone
 from app.db.repos import UserRepo
 from app.i18n import t
@@ -53,9 +53,6 @@ async def on_stats_today(callback: CallbackQuery, session: AsyncSession) -> None
     text = format_today_stats(stats, lang)
 
     await callback.message.edit_text(text)  # type: ignore[union-attr]
-    await callback.message.answer(  # type: ignore[union-attr]
-        t("nav_arrow", lang), reply_markup=main_keyboard(lang)
-    )
     await callback.answer()
 
 
@@ -74,9 +71,6 @@ async def on_stats_weekly(callback: CallbackQuery, session: AsyncSession) -> Non
     text = format_weekly_stats(stats, lang)
 
     await callback.message.edit_text(text)  # type: ignore[union-attr]
-    await callback.message.answer(  # type: ignore[union-attr]
-        t("nav_arrow", lang), reply_markup=main_keyboard(lang)
-    )
     await callback.answer()
 
 
@@ -95,7 +89,4 @@ async def on_stats_4weeks(callback: CallbackQuery, session: AsyncSession) -> Non
     text = format_four_week_stats(stats, lang)
 
     await callback.message.edit_text(text)  # type: ignore[union-attr]
-    await callback.message.answer(  # type: ignore[union-attr]
-        t("nav_arrow", lang), reply_markup=main_keyboard(lang)
-    )
     await callback.answer()

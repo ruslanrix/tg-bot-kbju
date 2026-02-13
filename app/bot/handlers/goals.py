@@ -7,7 +7,7 @@ from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.keyboards import goal_inline_keyboard, main_keyboard
+from app.bot.keyboards import goal_inline_keyboard
 from app.db.repos import UserRepo
 from app.i18n import t
 
@@ -54,8 +54,5 @@ async def on_goal_selected(callback: CallbackQuery, session: AsyncSession) -> No
     }.get(goal, goal)
     await callback.message.edit_text(  # type: ignore[union-attr]
         t("goal_set_confirmation", lang).format(label=label)
-    )
-    await callback.message.answer(  # type: ignore[union-attr]
-        t("nav_arrow", lang), reply_markup=main_keyboard(lang)
     )
     await callback.answer()

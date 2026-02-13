@@ -352,9 +352,6 @@ async def on_saved_delete(callback: CallbackQuery, session: AsyncSession) -> Non
     await callback.message.edit_text(  # type: ignore[union-attr]
         f"{t('deleted_label', lang)}\n\n{stats_text}"
     )
-    await callback.message.answer(  # type: ignore[union-attr]
-        t("nav_arrow", lang), reply_markup=main_keyboard(lang)
-    )
     await callback.answer()
 
 
@@ -404,9 +401,6 @@ async def on_history_delete(callback: CallbackQuery, session: AsyncSession) -> N
 
     await callback.message.edit_text(  # type: ignore[union-attr]
         f"{t('deleted_label', lang)}\n\n{stats_text}"
-    )
-    await callback.message.answer(  # type: ignore[union-attr]
-        t("nav_arrow", lang), reply_markup=main_keyboard(lang)
     )
     await callback.answer()
 
