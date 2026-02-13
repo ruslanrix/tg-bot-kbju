@@ -19,22 +19,22 @@ from app.services.nutrition_ai import Ingredient, NutritionAnalysis
 
 
 def _format_ingredient_line(ing: Ingredient, lang: str = "EN") -> str:
-    """Build a single ingredient bullet: name (Xg, Ykcal).
+    """Build a single ingredient bullet: name (Xg, Ykcal) or name (Ykcal).
 
     Display grams from ``weight_g``; if absent, convert ``volume_ml``
-    at 1 ml ≈ 1 g; if both absent, show ``0``.
+    at 1 ml ≈ 1 g; if both absent, omit grams entirely.
     """
     g_unit = tr("fmt_unit_g", lang)
     kcal_unit = tr("fmt_unit_kcal", lang)
 
     if ing.weight_g is not None:
-        grams = round(ing.weight_g)
+        grams_part = f"{round(ing.weight_g)}{g_unit}, "
     elif ing.volume_ml is not None:
-        grams = round(ing.volume_ml)  # 1 ml ≈ 1 g display-only
+        grams_part = f"{round(ing.volume_ml)}{g_unit}, "  # 1 ml ≈ 1 g display-only
     else:
-        grams = 0
+        grams_part = ""
 
-    return f"• {ing.name} ({grams}{g_unit}, {ing.calories_kcal}{kcal_unit})"
+    return f"• {ing.name} ({grams_part}{ing.calories_kcal}{kcal_unit})"
 
 
 def _format_meal_body(analysis: NutritionAnalysis, lang: str = "EN") -> list[str]:
