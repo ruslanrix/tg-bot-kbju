@@ -40,7 +40,15 @@ def _make_callback(
     cb.data = f"saved_edit:{meal_id}"
     cb.message = MagicMock()
     cb.message.edit_text = AsyncMock()
+    # answer() returns a new prompt message with chat.id and message_id
+    prompt_msg = MagicMock()
+    prompt_msg.chat = MagicMock()
+    prompt_msg.chat.id = 222
+    prompt_msg.message_id = 999
+    cb.message.answer = AsyncMock(return_value=prompt_msg)
     cb.answer = AsyncMock()
+    cb.bot = MagicMock()
+    cb.bot.edit_message_text = AsyncMock()
     return cb
 
 
@@ -86,16 +94,18 @@ class TestEditWindowEnforcement:
 
     @pytest.mark.asyncio
     async def test_edit_inside_window_proceeds(self) -> None:
-        """Meal consumed 1h ago — edit should proceed (FSM set)."""
+        """Meal consumed 1h ago — edit should proceed (FSM set, prompt sent)."""
         user = _make_user()
         meal = _make_meal(user, consumed_hours_ago=1.0)
         cb = _make_callback(meal.id)
         state = AsyncMock()
+        state.get_data = AsyncMock(return_value={})
 
         with (
             patch("app.bot.handlers.meal.UserRepo") as mock_user_repo,
             patch("app.bot.handlers.meal.MealRepo") as mock_meal_repo,
             patch("app.bot.handlers.meal.edit_window_hours", 48),
+            patch("app.bot.handlers.meal.start_timeout_task"),
         ):
             mock_user_repo.get_or_create = AsyncMock(return_value=user)
             mock_meal_repo.get_by_id = AsyncMock(return_value=meal)
@@ -105,10 +115,20 @@ class TestEditWindowEnforcement:
 
         # FSM should be set to waiting_for_text
         state.set_state.assert_called_once()
-        state.update_data.assert_called_once_with(edit_meal_id=str(meal.id))
-        # Message should show edit prompt
-        cb.message.edit_text.assert_called_once()
-        assert "corrected text" in cb.message.edit_text.call_args.args[0].lower()
+        # update_data should include all data contract fields
+        state.update_data.assert_called_once()
+        data_kwargs = state.update_data.call_args.kwargs
+        assert data_kwargs["edit_meal_id"] == str(meal.id)
+        assert "prompt_chat_id" in data_kwargs
+        assert "prompt_message_id" in data_kwargs
+        assert "session_token" in data_kwargs
+        assert "deadline" in data_kwargs
+        # New prompt message sent (not edit of original)
+        cb.message.answer.assert_called_once()
+        answer_kwargs = cb.message.answer.call_args.kwargs
+        assert answer_kwargs.get("reply_markup") is not None
+        # Original meal message should NOT be edited
+        cb.message.edit_text.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_edit_outside_window_blocked(self) -> None:
@@ -144,11 +164,13 @@ class TestEditWindowEnforcement:
         meal = _make_meal(user, consumed_hours_ago=47.0 + 59 / 60)
         cb = _make_callback(meal.id)
         state = AsyncMock()
+        state.get_data = AsyncMock(return_value={})
 
         with (
             patch("app.bot.handlers.meal.UserRepo") as mock_user_repo,
             patch("app.bot.handlers.meal.MealRepo") as mock_meal_repo,
             patch("app.bot.handlers.meal.edit_window_hours", 48),
+            patch("app.bot.handlers.meal.start_timeout_task"),
         ):
             mock_user_repo.get_or_create = AsyncMock(return_value=user)
             mock_meal_repo.get_by_id = AsyncMock(return_value=meal)
@@ -234,11 +256,13 @@ class TestEditWindowEnforcement:
         meal = _make_meal(user, consumed_hours_ago=12.0)
         cb = _make_callback(meal.id)
         state = AsyncMock()
+        state.get_data = AsyncMock(return_value={})
 
         with (
             patch("app.bot.handlers.meal.UserRepo") as mock_user_repo,
             patch("app.bot.handlers.meal.MealRepo") as mock_meal_repo,
             patch("app.bot.handlers.meal.edit_window_hours", 24),
+            patch("app.bot.handlers.meal.start_timeout_task"),
         ):
             mock_user_repo.get_or_create = AsyncMock(return_value=user)
             mock_meal_repo.get_by_id = AsyncMock(return_value=meal)
