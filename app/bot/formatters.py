@@ -156,18 +156,30 @@ def format_weekly_stats(days: list[DayStats], lang: str = "EN") -> str:
 
 
 def format_four_week_stats(weeks: list[WeekAvgStats], lang: str = "EN") -> str:
-    """Format weekly averages for the last 4 weeks."""
+    """Format weekly averages for the last 4 weeks (2-line blocks).
+
+    Template (each week)::
+
+        EN: Week 1 (17.06-23.06)
+            1850 kcal | P/C/F 120/200/65
+
+        RU: Неделя 1 (17.06-23.06)
+            1850 ккал | Б/У/Ж 120/200/65
+    """
     week_label = tr("fmt_week_label", lang)
+    kcal_unit = tr("fmt_unit_kcal", lang)
+    macro_label = tr("fmt_macro_pcf", lang)
     lines: list[str] = [tr("fmt_4week_stats_header", lang)]
-    lines.append("")
     for i, week in enumerate(weeks, 1):
-        ws = week["week_start"].strftime("%b %d")
-        we = week["week_end"].strftime("%b %d")
-        cal = week["avg_calories_kcal"]
-        p = week["avg_protein_g"]
-        c = week["avg_carbs_g"]
-        f = week["avg_fat_g"]
-        lines.append(f"{week_label} {i} ({ws}–{we}): {cal}kcal | P:{p}g C:{c}g F:{f}g")
+        ws = _format_date_short(week["week_start"])
+        we = _format_date_short(week["week_end"])
+        cal = int(week["avg_calories_kcal"])
+        p = int(week["avg_protein_g"])
+        c = int(week["avg_carbs_g"])
+        f = int(week["avg_fat_g"])
+        lines.append("")
+        lines.append(f"{week_label} {i} ({ws}-{we})")
+        lines.append(f"{cal} {kcal_unit} | {macro_label} {p}/{c}/{f}")
     return "\n".join(lines)
 
 

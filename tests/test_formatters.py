@@ -12,7 +12,12 @@ from __future__ import annotations
 import datetime as _dt
 import re
 
-from app.bot.formatters import format_meal_draft, format_meal_saved, format_weekly_stats
+from app.bot.formatters import (
+    format_four_week_stats,
+    format_meal_draft,
+    format_meal_saved,
+    format_weekly_stats,
+)
 from app.i18n import t as tr
 from app.services.nutrition_ai import Ingredient, NutritionAnalysis
 
@@ -299,3 +304,93 @@ class TestWeeklyStatsFormat:
     def test_ru_header_present(self) -> None:
         text = format_weekly_stats(self._days, "RU")
         assert tr("fmt_weekly_stats_header", "RU") in text
+
+
+# ---------------------------------------------------------------------------
+# 4-week stats formatting (v1.1.3 Step 05)
+# ---------------------------------------------------------------------------
+
+
+def _make_week_avg(ws: _dt.date, we: _dt.date, cal: float = 0, p: float = 0, c: float = 0, f: float = 0):
+    """Build a WeekAvgStats dict for testing."""
+    return {
+        "week_start": ws,
+        "week_end": we,
+        "avg_calories_kcal": cal,
+        "avg_protein_g": p,
+        "avg_carbs_g": c,
+        "avg_fat_g": f,
+    }
+
+
+class TestFourWeekStatsFormat:
+    """4-week stats output: 2-line blocks, locale-aware, integer-only."""
+
+    _weeks = [
+        _make_week_avg(_dt.date(2024, 6, 17), _dt.date(2024, 6, 23), 1850.0, 120.7, 200.3, 65.4),
+        _make_week_avg(_dt.date(2024, 6, 10), _dt.date(2024, 6, 16), 1600.0, 100.0, 180.0, 55.0),
+        _make_week_avg(_dt.date(2024, 6, 3), _dt.date(2024, 6, 9), 0.0, 0.0, 0.0, 0.0),
+        _make_week_avg(_dt.date(2024, 5, 27), _dt.date(2024, 6, 2), 1900.0, 130.0, 210.0, 68.0),
+    ]
+
+    def test_en_two_line_block(self) -> None:
+        text = format_four_week_stats(self._weeks, "EN")
+        assert "Week 1 (17.06-23.06)" in text
+        assert "1850 kcal | P/C/F 120/200/65" in text
+
+    def test_ru_week_label(self) -> None:
+        text = format_four_week_stats(self._weeks, "RU")
+        assert "Неделя 1 (17.06-23.06)" in text
+
+    def test_ru_kcal_unit(self) -> None:
+        text = format_four_week_stats(self._weeks, "RU")
+        assert "1850 ккал" in text
+
+    def test_ru_macro_label(self) -> None:
+        text = format_four_week_stats(self._weeks, "RU")
+        assert "Б/У/Ж 120/200/65" in text
+
+    def test_date_format_dd_mm(self) -> None:
+        text = format_four_week_stats(self._weeks, "EN")
+        assert "17.06-23.06" in text
+        assert "Jun" not in text
+
+    def test_integer_only_values(self) -> None:
+        text = format_four_week_stats(self._weeks, "EN")
+        assert "120.7" not in text
+        assert "200.3" not in text
+
+    def test_zero_week_shown(self) -> None:
+        text = format_four_week_stats(self._weeks, "EN")
+        assert "Week 3 (03.06-09.06)" in text
+        assert "0 kcal | P/C/F 0/0/0" in text
+
+    def test_exactly_4_week_blocks(self) -> None:
+        text = format_four_week_stats(self._weeks, "EN")
+        assert "Week 1" in text
+        assert "Week 2" in text
+        assert "Week 3" in text
+        assert "Week 4" in text
+        assert "Week 5" not in text
+
+    def test_each_block_is_two_lines(self) -> None:
+        """Each week block = label line + data line."""
+        text = format_four_week_stats(self._weeks, "EN")
+        lines = text.strip().split("\n")
+        # Header + blank + (blank + label + data) * 4
+        # = 1 + 4*(blank + label + data) = 1 + 12 = 13
+        # But first block has no leading blank → header, blank, label, data, blank, label, data...
+        # Let's count week label lines
+        week_lines = [l for l in lines if l.startswith("Week ")]
+        data_lines = [l for l in lines if "kcal |" in l]
+        assert len(week_lines) == 4
+        assert len(data_lines) == 4
+
+    def test_header_present(self) -> None:
+        text = format_four_week_stats(self._weeks, "EN")
+        assert tr("fmt_4week_stats_header", "EN") in text
+
+    def test_no_old_single_line_format(self) -> None:
+        """Old single-line format with colon after date range must not appear."""
+        text = format_four_week_stats(self._weeks, "EN")
+        assert "): " not in text  # Old: "Week 1 (Jun 17–Jun 23): 1850kcal..."
