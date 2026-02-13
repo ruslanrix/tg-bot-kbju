@@ -184,13 +184,21 @@ async def btn_add_meal(message: Message, session: AsyncSession) -> None:
 
 
 @router.message(F.photo)
-async def handle_photo(message: Message, session: AsyncSession, bot: Bot) -> None:
+async def handle_photo(
+    message: Message, session: AsyncSession, bot: Bot, state: FSMContext
+) -> None:
     """Process a photo message as a meal input."""
     if message.from_user is None:
         return
 
     user = await UserRepo.get_or_create(session, message.from_user.id)
     lang = user.language
+
+    # In edit state — reject photo, ask for text feedback instead
+    current_state = await state.get_state()
+    if current_state == EditMealStates.waiting_for_text.state:
+        await message.reply(t("edit_feedback_photo_warning", lang))
+        return
 
     # §5.6 — photo size guard: prefer largest variant that fits the limit.
     # Telegram provides multiple sizes; iterate from largest to smallest.
@@ -731,13 +739,15 @@ async def _handle_analysis_result(
 async def _handle_edit_text(
     message: Message, session: AsyncSession, bot: Bot, state: FSMContext
 ) -> None:
-    """Handle corrected text in edit flow — re-analyze and update directly."""
+    """Handle feedback text in edit flow — re-analyze with context and update."""
     if message.from_user is None or not message.text:
         return
 
     data = await state.get_data()
     edit_meal_id_str = data.get("edit_meal_id")
     edit_meal_id = uuid.UUID(edit_meal_id_str) if edit_meal_id_str else None
+    prompt_chat_id = data.get("prompt_chat_id")
+    prompt_message_id = data.get("prompt_message_id")
 
     await finalize_edit_session(state, message.from_user.id)
 
@@ -756,12 +766,10 @@ async def _handle_edit_text(
                 t("msg_edit_window_expired", lang).format(hours=edit_window_hours)
             )
             return
+    else:
+        meal = None
 
-    # Precheck
-    text_result = check_text(message.text, has_photo=False)
-    if not text_result.passed:
-        await message.reply(t(text_result.reject_key or "", lang))
-        return
+    # No check_text() — all text in edit state is valid feedback (FEAT-04)
 
     # Rate limit
     if not await _check_limits(message, lang):
@@ -770,9 +778,22 @@ async def _handle_edit_text(
     # Send edit-specific processing message (spec D4/FEAT-06)
     proc_msg = await message.reply(t("msg_processing_edit", lang))
 
-    # OpenAI analysis (required per spec §3.7 — ingredients must be generated)
+    # Build re-analysis prompt with meal context + user feedback
+    feedback_text = message.text
+    if meal is not None and meal.original_text:
+        context_prompt = (
+            f"Original meal description: {meal.original_text}\n"
+            f"Current analysis: {meal.meal_name}, "
+            f"{meal.calories_kcal} kcal, "
+            f"P {meal.protein_g}g, C {meal.carbs_g}g, F {meal.fat_g}g\n"
+            f"User feedback: {feedback_text}"
+        )
+    else:
+        context_prompt = feedback_text
+
+    # OpenAI analysis with feedback context
     analysis = await _analyze_with_typing(
-        message, bot, lambda svc: svc.analyze_text(message.text or "", lang=lang),
+        message, bot, lambda svc: svc.analyze_text(context_prompt, lang=lang),
         proc_msg=proc_msg,
         lang=lang,
     )
@@ -789,3 +810,15 @@ async def _handle_edit_text(
         proc_msg=proc_msg,
         lang=lang,
     )
+
+    # Edit prompt message to show "Updated" status and remove keyboard
+    if prompt_chat_id and prompt_message_id:
+        try:
+            await bot.edit_message_text(
+                text=t("edit_feedback_updated", lang),
+                chat_id=prompt_chat_id,
+                message_id=prompt_message_id,
+                reply_markup=None,
+            )
+        except TelegramBadRequest:
+            pass  # prompt already gone
