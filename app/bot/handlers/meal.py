@@ -499,6 +499,12 @@ async def on_edit_ok(
     user = await UserRepo.get_or_create(session, callback.from_user.id)
     lang = user.language
 
+    # Validate active session — reject stale callbacks
+    data = await state.get_data()
+    if not data.get("edit_meal_id"):
+        await callback.answer(t("edit_feedback_timeout", lang), show_alert=True)
+        return
+
     # Finalize edit session (cancel timeout + clear FSM)
     await finalize_edit_session(state, callback.from_user.id)
 
@@ -532,6 +538,13 @@ async def on_edit_delete(
 
     user = await UserRepo.get_or_create(session, callback.from_user.id)
     lang = user.language
+
+    # Validate active session and meal_id match — reject stale callbacks
+    data = await state.get_data()
+    active_meal_id = data.get("edit_meal_id")
+    if not active_meal_id or active_meal_id != meal_id_str:
+        await callback.answer(t("edit_feedback_timeout", lang), show_alert=True)
+        return
     meal = await MealRepo.get_by_id(session, meal_uuid, user.id)
     if meal is None:
         await callback.answer(t("meal_not_found", lang), show_alert=True)
