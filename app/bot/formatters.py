@@ -111,10 +111,18 @@ def _format_date_short(d: date) -> str:
 # ---------------------------------------------------------------------------
 
 
-def format_today_stats(stats: DayStats, lang: str = "EN") -> str:
+def format_today_stats(
+    stats: DayStats,
+    lang: str = "EN",
+    *,
+    bold_header_html: bool = False,
+) -> str:
     """Format Today's Stats block shown after saving a meal."""
+    header = tr("fmt_today_stats_header", lang)
+    if bold_header_html:
+        header = f"<b>{header}</b>"
     return (
-        f"{tr('fmt_today_stats_header', lang)}\n"
+        f"{header}\n"
         f"⚪ {tr('fmt_calories', lang)}: {stats['calories_kcal']}kcal\n"
         f"⚪ {tr('fmt_carbs', lang)}: {stats['carbs_g']}g\n"
         f"⚪ {tr('fmt_protein', lang)}: {stats['protein_g']}g\n"
@@ -127,7 +135,12 @@ def format_today_stats(stats: DayStats, lang: str = "EN") -> str:
 # ---------------------------------------------------------------------------
 
 
-def format_weekly_stats(days: list[DayStats], lang: str = "EN") -> str:
+def format_weekly_stats(
+    days: list[DayStats],
+    lang: str = "EN",
+    *,
+    bold_header_html: bool = False,
+) -> str:
     """Format per-day breakdown for the last 7 days.
 
     Template:
@@ -136,16 +149,19 @@ def format_weekly_stats(days: list[DayStats], lang: str = "EN") -> str:
     """
     kcal_unit = tr("fmt_unit_kcal", lang)
     macro_label = tr("fmt_macro_pcf", lang)
-    lines: list[str] = [tr("fmt_weekly_stats_header", lang)]
+    header = tr("fmt_weekly_stats_header", lang)
+    if bold_header_html:
+        header = f"<b>{header}</b>"
+    lines: list[str] = [header]
     lines.append("")
     for day in days:
         d: date = day["date"]
         dow = _weekday_abbr(d, lang)
         dd_mm = _format_date_short(d)
-        cal = int(day["calories_kcal"])
-        p = int(day["protein_g"])
-        c = int(day["carbs_g"])
-        f = int(day["fat_g"])
+        cal = round(day["calories_kcal"])
+        p = round(day["protein_g"])
+        c = round(day["carbs_g"])
+        f = round(day["fat_g"])
         lines.append(f"{dow} {dd_mm}: {cal} {kcal_unit} | {macro_label} {p}/{c}/{f}")
     return "\n".join(lines)
 
@@ -155,7 +171,12 @@ def format_weekly_stats(days: list[DayStats], lang: str = "EN") -> str:
 # ---------------------------------------------------------------------------
 
 
-def format_four_week_stats(weeks: list[WeekAvgStats], lang: str = "EN") -> str:
+def format_four_week_stats(
+    weeks: list[WeekAvgStats],
+    lang: str = "EN",
+    *,
+    bold_header_html: bool = False,
+) -> str:
     """Format weekly averages for the last 4 weeks (2-line blocks).
 
     Template (each week)::
@@ -169,14 +190,17 @@ def format_four_week_stats(weeks: list[WeekAvgStats], lang: str = "EN") -> str:
     week_label = tr("fmt_week_label", lang)
     kcal_unit = tr("fmt_unit_kcal", lang)
     macro_label = tr("fmt_macro_pcf", lang)
-    lines: list[str] = [tr("fmt_4week_stats_header", lang)]
+    header = tr("fmt_4week_stats_header", lang)
+    if bold_header_html:
+        header = f"<b>{header}</b>"
+    lines: list[str] = [header]
     for i, week in enumerate(weeks, 1):
         ws = _format_date_short(week["week_start"])
         we = _format_date_short(week["week_end"])
-        cal = int(week["avg_calories_kcal"])
-        p = int(week["avg_protein_g"])
-        c = int(week["avg_carbs_g"])
-        f = int(week["avg_fat_g"])
+        cal = round(week["avg_calories_kcal"])
+        p = round(week["avg_protein_g"])
+        c = round(week["avg_carbs_g"])
+        f = round(week["avg_fat_g"])
         lines.append("")
         lines.append(f"{week_label} {i} ({ws}-{we})")
         lines.append(f"{cal} {kcal_unit} | {macro_label} {p}/{c}/{f}")

@@ -16,6 +16,7 @@ from app.bot.formatters import (
     format_four_week_stats,
     format_meal_draft,
     format_meal_saved,
+    format_today_stats,
     format_weekly_stats,
 )
 from app.i18n import t as tr
@@ -141,7 +142,7 @@ class TestIngredientFormat:
         assert "• chicken (165kcal)" in text
         # Ingredient line must not contain fabricated "0g"
         lines = text.split("\n")
-        ing_lines = [l for l in lines if l.startswith("•") and "chicken" in l]
+        ing_lines = [ln for ln in lines if ln.startswith("•") and "chicken" in ln]
         for line in ing_lines:
             assert "0g" not in line
 
@@ -156,7 +157,7 @@ class TestIngredientFormat:
         text = format_meal_saved(_make_analysis(likely_ingredients=[ing]))
         # Find ingredient section and check no ml
         lines = text.split("\n")
-        ing_lines = [l for l in lines if l.startswith("•") and "milk" in l]
+        ing_lines = [ln for ln in lines if ln.startswith("•") and "milk" in ln]
         for line in ing_lines:
             assert "ml" not in line
 
@@ -165,7 +166,7 @@ class TestIngredientFormat:
         ing = Ingredient(name="rice", amount="1 cup", calories_kcal=200, weight_g=180)
         text = format_meal_saved(_make_analysis(likely_ingredients=[ing]))
         lines = text.split("\n")
-        ing_lines = [l for l in lines if l.startswith("•") and "rice" in l]
+        ing_lines = [ln for ln in lines if ln.startswith("•") and "rice" in ln]
         for line in ing_lines:
             assert "cup" not in line
 
@@ -249,7 +250,7 @@ class TestWeeklyStatsFormat:
 
     def test_en_exact_template(self) -> None:
         text = format_weekly_stats(self._days, "EN")
-        assert "Wed 19.06: 1850 kcal | P/C/F 120/200/65" in text
+        assert "Wed 19.06: 1850 kcal | P/C/F 120/200/66" in text
 
     def test_ru_weekday_abbreviation(self) -> None:
         text = format_weekly_stats(self._days, "RU")
@@ -261,7 +262,7 @@ class TestWeeklyStatsFormat:
 
     def test_ru_macro_label(self) -> None:
         text = format_weekly_stats(self._days, "RU")
-        assert "Б/У/Ж 120/200/65" in text
+        assert "Б/У/Ж 120/200/66" in text
 
     def test_date_format_dd_mm(self) -> None:
         """Dates should be DD.MM, not English strftime."""
@@ -336,7 +337,7 @@ class TestFourWeekStatsFormat:
     def test_en_two_line_block(self) -> None:
         text = format_four_week_stats(self._weeks, "EN")
         assert "Week 1 (17.06-23.06)" in text
-        assert "1850 kcal | P/C/F 120/200/65" in text
+        assert "1850 kcal | P/C/F 121/200/65" in text
 
     def test_ru_week_label(self) -> None:
         text = format_four_week_stats(self._weeks, "RU")
@@ -348,7 +349,7 @@ class TestFourWeekStatsFormat:
 
     def test_ru_macro_label(self) -> None:
         text = format_four_week_stats(self._weeks, "RU")
-        assert "Б/У/Ж 120/200/65" in text
+        assert "Б/У/Ж 121/200/65" in text
 
     def test_date_format_dd_mm(self) -> None:
         text = format_four_week_stats(self._weeks, "EN")
@@ -381,8 +382,8 @@ class TestFourWeekStatsFormat:
         # = 1 + 4*(blank + label + data) = 1 + 12 = 13
         # But first block has no leading blank → header, blank, label, data, blank, label, data...
         # Let's count week label lines
-        week_lines = [l for l in lines if l.startswith("Week ")]
-        data_lines = [l for l in lines if "kcal |" in l]
+        week_lines = [ln for ln in lines if ln.startswith("Week ")]
+        data_lines = [ln for ln in lines if "kcal |" in ln]
         assert len(week_lines) == 4
         assert len(data_lines) == 4
 
@@ -394,3 +395,70 @@ class TestFourWeekStatsFormat:
         """Old single-line format with colon after date range must not appear."""
         text = format_four_week_stats(self._weeks, "EN")
         assert "): " not in text  # Old: "Week 1 (Jun 17–Jun 23): 1850kcal..."
+
+
+# ---------------------------------------------------------------------------
+# Bold header HTML (v1.1.3 Step 06)
+# ---------------------------------------------------------------------------
+
+_TODAY_STATS = {
+    "date": _dt.date(2024, 6, 19),
+    "calories_kcal": 1500,
+    "protein_g": 100.0,
+    "carbs_g": 180.0,
+    "fat_g": 55.0,
+}
+
+
+class TestBoldHeaders:
+    """bold_header_html flag wraps only the header with <b>.</b>"""
+
+    def test_today_default_no_bold(self) -> None:
+        text = format_today_stats(_TODAY_STATS, "EN")
+        assert "<b>" not in text
+
+    def test_today_bold_header(self) -> None:
+        text = format_today_stats(_TODAY_STATS, "EN", bold_header_html=True)
+        assert text.startswith("<b>📊 Today's Stats</b>")
+
+    def test_today_bold_body_not_bold(self) -> None:
+        text = format_today_stats(_TODAY_STATS, "EN", bold_header_html=True)
+        lines = text.split("\n")
+        for line in lines[1:]:
+            assert "<b>" not in line
+
+    def test_weekly_default_no_bold(self) -> None:
+        days = [_make_day_stats(_dt.date(2024, 6, 19), 1000, 50, 100, 30)]
+        text = format_weekly_stats(days, "EN")
+        assert "<b>" not in text
+
+    def test_weekly_bold_header(self) -> None:
+        days = [_make_day_stats(_dt.date(2024, 6, 19), 1000, 50, 100, 30)]
+        text = format_weekly_stats(days, "EN", bold_header_html=True)
+        first_line = text.split("\n")[0]
+        assert first_line.startswith("<b>") and first_line.endswith("</b>")
+
+    def test_weekly_bold_body_not_bold(self) -> None:
+        days = [_make_day_stats(_dt.date(2024, 6, 19), 1000, 50, 100, 30)]
+        text = format_weekly_stats(days, "EN", bold_header_html=True)
+        lines = text.split("\n")
+        for line in lines[1:]:
+            assert "<b>" not in line
+
+    def test_four_week_default_no_bold(self) -> None:
+        weeks = [_make_week_avg(_dt.date(2024, 6, 17), _dt.date(2024, 6, 23), 1500, 100, 180, 55)]
+        text = format_four_week_stats(weeks, "EN")
+        assert "<b>" not in text
+
+    def test_four_week_bold_header(self) -> None:
+        weeks = [_make_week_avg(_dt.date(2024, 6, 17), _dt.date(2024, 6, 23), 1500, 100, 180, 55)]
+        text = format_four_week_stats(weeks, "EN", bold_header_html=True)
+        first_line = text.split("\n")[0]
+        assert first_line.startswith("<b>") and first_line.endswith("</b>")
+
+    def test_four_week_bold_body_not_bold(self) -> None:
+        weeks = [_make_week_avg(_dt.date(2024, 6, 17), _dt.date(2024, 6, 23), 1500, 100, 180, 55)]
+        text = format_four_week_stats(weeks, "EN", bold_header_html=True)
+        lines = text.split("\n")
+        for line in lines[1:]:
+            assert "<b>" not in line
