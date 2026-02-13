@@ -23,7 +23,12 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.formatters import format_meal_saved, format_today_stats
-from app.bot.keyboards import all_main_button_texts, main_keyboard, saved_actions_keyboard
+from app.bot.keyboards import (
+    all_main_button_texts,
+    edit_feedback_keyboard,
+    main_keyboard,
+    saved_actions_keyboard,
+)
 from app.core.time import today_local, user_timezone
 from app.db.repos import MealRepo, UserRepo
 from app.i18n import t
@@ -381,12 +386,47 @@ async def on_saved_edit(callback: CallbackQuery, session: AsyncSession, state: F
         )
         return
 
-    await state.set_state(EditMealStates.waiting_for_text)
-    await state.update_data(edit_meal_id=meal_id_str)
+    user_id = callback.from_user.id
 
-    await callback.message.edit_text(  # type: ignore[union-attr]
-        t("edit_send_corrected", lang)
+    # Cancel previous edit session if any (mark old prompt as replaced)
+    prev_data = await state.get_data()
+    prev_prompt_chat = prev_data.get("prompt_chat_id")
+    prev_prompt_msg = prev_data.get("prompt_message_id")
+    if prev_prompt_chat and prev_prompt_msg and callback.bot:
+        try:
+            await callback.bot.edit_message_text(
+                text=t("edit_feedback_replaced", lang),
+                chat_id=prev_prompt_chat,
+                message_id=prev_prompt_msg,
+                reply_markup=None,
+            )
+        except TelegramBadRequest:
+            pass  # old prompt already gone
+    cancel_timeout_task(user_id)
+
+    # Send new prompt message with feedback keyboard
+    prompt_msg = await callback.message.answer(  # type: ignore[union-attr]
+        t("edit_feedback_prompt", lang),
+        reply_markup=edit_feedback_keyboard(meal_id_str, lang),
     )
+
+    # Set FSM state with full data contract
+    session_token = uuid.uuid4().hex
+    await state.set_state(EditMealStates.waiting_for_text)
+    await state.update_data(
+        edit_meal_id=meal_id_str,
+        prompt_chat_id=prompt_msg.chat.id,
+        prompt_message_id=prompt_msg.message_id,
+        session_token=session_token,
+        deadline=datetime.now(timezone.utc).timestamp() + EDIT_TIMEOUT,
+    )
+
+    # Start 5-minute timeout
+    start_timeout_task(
+        user_id, prompt_msg.chat.id, prompt_msg.message_id,
+        session_token, callback.bot, lang,  # type: ignore[arg-type]
+    )
+
     await callback.answer()
 
 
@@ -699,7 +739,7 @@ async def _handle_edit_text(
     edit_meal_id_str = data.get("edit_meal_id")
     edit_meal_id = uuid.UUID(edit_meal_id_str) if edit_meal_id_str else None
 
-    await state.clear()
+    await finalize_edit_session(state, message.from_user.id)
 
     user = await UserRepo.get_or_create(session, message.from_user.id)
     lang = user.language
