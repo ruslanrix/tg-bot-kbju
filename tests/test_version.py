@@ -23,7 +23,7 @@ class TestGetVersion:
 
     def test_returns_version_string(self):
         version = get_version()
-        assert version == "1.1.2"
+        assert version == "1.1.3"
 
     def test_version_is_semver(self):
         version = get_version()
@@ -72,7 +72,7 @@ class TestVersionHandler:
 
         message.reply.assert_called_once()
         reply_text = message.reply.call_args.args[0]
-        assert "1.1.2" in reply_text
+        assert "1.1.3" in reply_text
         assert "KBJU Bot" in reply_text
 
     @pytest.mark.asyncio
