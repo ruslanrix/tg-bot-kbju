@@ -255,7 +255,7 @@ class TestFeedbackTextRouting:
             patch("app.bot.handlers.meal.UserRepo") as ur,
             patch("app.bot.handlers.meal.MealRepo") as mr,
             patch("app.bot.handlers.meal._check_limits", return_value=True),
-            patch("app.bot.handlers.meal._analyze_with_typing", return_value=None),
+            patch("app.bot.handlers.meal._analyze_with_typing", return_value=None) as mock_analyze,
             patch("app.bot.handlers.meal.edit_window_hours", 48),
             patch("app.bot.handlers.meal.cancel_timeout_task"),
         ):
@@ -264,9 +264,11 @@ class TestFeedbackTextRouting:
             session = AsyncMock(spec=AsyncSession)
             await _handle_edit_text(msg, session, bot, state)
 
-        # Should reach processing (reply with proc_msg), not get rejected
-        assert msg.reply.call_count >= 1
-        # check_text should NOT have been called (implicit: no reject reply)
+        # Processing message was sent (msg_processing_edit)
+        proc_reply = msg.reply.call_args_list[0]
+        assert t("msg_processing_edit", "EN") in proc_reply.args[0]
+        # _analyze_with_typing was called (reached OpenAI, not rejected)
+        mock_analyze.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -542,7 +544,7 @@ class TestStaleCallbackProtection:
         cb.message.edit_text.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_mismatched_meal_id_rejected(self) -> None:
+    async def test_mismatched_meal_id_delete_rejected(self) -> None:
         """Delete callback with different meal_id than active session."""
         user = _make_user()
         meal = _make_meal(user)
@@ -561,6 +563,29 @@ class TestStaleCallbackProtection:
         cb.answer.assert_called_once()
         assert cb.answer.call_args.kwargs.get("show_alert") is True
         cb.message.edit_text.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_mismatched_meal_id_ok_rejected(self) -> None:
+        """OK callback with different meal_id than active session."""
+        user = _make_user()
+        meal = _make_meal(user)
+        other_meal_id = uuid.uuid4()
+        cb = _make_edit_ok_callback(other_meal_id)
+        state = AsyncMock()
+        state.get_data = AsyncMock(return_value={
+            "edit_meal_id": str(meal.id),  # different from callback
+        })
+
+        with patch("app.bot.handlers.meal.UserRepo") as ur:
+            ur.get_or_create = AsyncMock(return_value=user)
+            session = AsyncMock(spec=AsyncSession)
+            await on_edit_ok(cb, session, state)
+
+        # Alert shown, no finalize, no prompt edit
+        cb.answer.assert_called_once()
+        assert cb.answer.call_args.kwargs.get("show_alert") is True
+        cb.message.edit_text.assert_not_called()
+        state.clear.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

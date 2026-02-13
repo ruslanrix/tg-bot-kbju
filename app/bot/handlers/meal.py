@@ -496,12 +496,15 @@ async def on_edit_ok(
     if callback.from_user is None or callback.data is None:
         return
 
+    meal_id_str = callback.data.split(":", 1)[1]
+
     user = await UserRepo.get_or_create(session, callback.from_user.id)
     lang = user.language
 
-    # Validate active session — reject stale callbacks
+    # Validate active session and meal_id match — reject stale callbacks
     data = await state.get_data()
-    if not data.get("edit_meal_id"):
+    active_meal_id = data.get("edit_meal_id")
+    if not active_meal_id or active_meal_id != meal_id_str:
         await callback.answer(t("edit_feedback_timeout", lang), show_alert=True)
         return
 
