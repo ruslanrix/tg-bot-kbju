@@ -42,26 +42,24 @@ def _format_meal_body(analysis: NutritionAnalysis, lang: str = "EN") -> list[str
     lines: list[str] = []
     lines.append("")
     lines.append(tr("fmt_calories", lang))
-    lines.append(f"{analysis.calories_kcal}kcal")
+    lines.append(f"{analysis.calories_kcal}{tr('fmt_unit_kcal', lang)}")
+
+    # Caffeine — shown only if present, placed after calories and before macros
+    if analysis.caffeine_mg is not None:
+        lines.append("")
+        lines.append(f"☕ {tr('fmt_caffeine', lang)}: {analysis.caffeine_mg}mg")
+
     lines.append("")
     lines.append(tr("fmt_macros", lang))
-    lines.append(f"• {tr('fmt_protein', lang)}: {analysis.protein_g}g")
-    lines.append(f"• {tr('fmt_carbs', lang)}: {analysis.carbs_g}g")
-    lines.append(f"• {tr('fmt_fat', lang)}: {analysis.fat_g}g")
-
-    # Total weight / volume / caffeine (show only if present)
-    totals: list[str] = []
-    if analysis.weight_g is not None:
-        totals.append(f"{tr('fmt_weight', lang)}: {analysis.weight_g}g")
-    if analysis.volume_ml is not None:
-        totals.append(f"{tr('fmt_volume', lang)}: {analysis.volume_ml}ml")
-    if analysis.caffeine_mg is not None:
-        totals.append(f"{tr('fmt_caffeine', lang)}: {analysis.caffeine_mg}mg")
-    if totals:
-        lines.append("")
-        lines.append(tr("fmt_totals", lang))
-        for total in totals:
-            lines.append(f"• {total}")
+    lines.append(
+        f"• {tr('fmt_protein', lang)}: {analysis.protein_g}{tr('fmt_unit_g', lang)}"
+    )
+    lines.append(
+        f"• {tr('fmt_carbs', lang)}: {analysis.carbs_g}{tr('fmt_unit_g', lang)}"
+    )
+    lines.append(
+        f"• {tr('fmt_fat', lang)}: {analysis.fat_g}{tr('fmt_unit_g', lang)}"
+    )
 
     if analysis.likely_ingredients:
         lines.append("")
