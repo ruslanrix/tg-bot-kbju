@@ -18,14 +18,23 @@ from app.services.nutrition_ai import Ingredient, NutritionAnalysis
 # ---------------------------------------------------------------------------
 
 
-def _format_ingredient_line(ing: Ingredient) -> str:
-    """Build a single ingredient bullet, including weight/volume when present."""
-    parts = [ing.amount, f"{ing.calories_kcal}kcal"]
+def _format_ingredient_line(ing: Ingredient, lang: str = "EN") -> str:
+    """Build a single ingredient bullet: name (Xg, Ykcal).
+
+    Display grams from ``weight_g``; if absent, convert ``volume_ml``
+    at 1 ml ≈ 1 g; if both absent, show ``0``.
+    """
+    g_unit = tr("fmt_unit_g", lang)
+    kcal_unit = tr("fmt_unit_kcal", lang)
+
     if ing.weight_g is not None:
-        parts.append(f"{round(ing.weight_g)}g")
-    if ing.volume_ml is not None:
-        parts.append(f"{round(ing.volume_ml)}ml")
-    return f"• {ing.name} ({', '.join(parts)})"
+        grams = round(ing.weight_g)
+    elif ing.volume_ml is not None:
+        grams = round(ing.volume_ml)  # 1 ml ≈ 1 g display-only
+    else:
+        grams = 0
+
+    return f"• {ing.name} ({grams}{g_unit}, {ing.calories_kcal}{kcal_unit})"
 
 
 def _format_meal_body(analysis: NutritionAnalysis, lang: str = "EN") -> list[str]:
@@ -58,7 +67,7 @@ def _format_meal_body(analysis: NutritionAnalysis, lang: str = "EN") -> list[str
         lines.append("")
         lines.append(tr("fmt_likely_ingredients", lang))
         for ing in analysis.likely_ingredients:
-            lines.append(_format_ingredient_line(ing))
+            lines.append(_format_ingredient_line(ing, lang))
 
     return lines
 
