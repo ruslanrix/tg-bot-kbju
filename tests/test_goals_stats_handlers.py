@@ -123,6 +123,7 @@ class TestStatsNoEmoji:
             await on_stats_today(cb, session)
 
         cb.message.edit_text.assert_called_once()
+        assert cb.message.edit_text.call_args.kwargs.get("parse_mode") == "HTML"
         _assert_no_emoji(cb)
 
     @pytest.mark.asyncio
@@ -141,6 +142,7 @@ class TestStatsNoEmoji:
             await on_stats_weekly(cb, session)
 
         cb.message.edit_text.assert_called_once()
+        assert cb.message.edit_text.call_args.kwargs.get("parse_mode") == "HTML"
         _assert_no_emoji(cb)
 
     @pytest.mark.asyncio
@@ -159,4 +161,5 @@ class TestStatsNoEmoji:
             await on_stats_4weeks(cb, session)
 
         cb.message.edit_text.assert_called_once()
+        assert cb.message.edit_text.call_args.kwargs.get("parse_mode") == "HTML"
         _assert_no_emoji(cb)

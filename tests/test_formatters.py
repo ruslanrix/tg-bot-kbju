@@ -16,6 +16,7 @@ from app.bot.formatters import (
     format_four_week_stats,
     format_meal_draft,
     format_meal_saved,
+    format_today_stats,
     format_weekly_stats,
 )
 from app.i18n import t as tr
@@ -394,3 +395,70 @@ class TestFourWeekStatsFormat:
         """Old single-line format with colon after date range must not appear."""
         text = format_four_week_stats(self._weeks, "EN")
         assert "): " not in text  # Old: "Week 1 (Jun 17–Jun 23): 1850kcal..."
+
+
+# ---------------------------------------------------------------------------
+# Bold header HTML (v1.1.3 Step 06)
+# ---------------------------------------------------------------------------
+
+_TODAY_STATS = {
+    "date": _dt.date(2024, 6, 19),
+    "calories_kcal": 1500,
+    "protein_g": 100.0,
+    "carbs_g": 180.0,
+    "fat_g": 55.0,
+}
+
+
+class TestBoldHeaders:
+    """bold_header_html flag wraps only the header with <b>.</b>"""
+
+    def test_today_default_no_bold(self) -> None:
+        text = format_today_stats(_TODAY_STATS, "EN")
+        assert "<b>" not in text
+
+    def test_today_bold_header(self) -> None:
+        text = format_today_stats(_TODAY_STATS, "EN", bold_header_html=True)
+        assert text.startswith("<b>📊 Today's Stats</b>")
+
+    def test_today_bold_body_not_bold(self) -> None:
+        text = format_today_stats(_TODAY_STATS, "EN", bold_header_html=True)
+        lines = text.split("\n")
+        for line in lines[1:]:
+            assert "<b>" not in line
+
+    def test_weekly_default_no_bold(self) -> None:
+        days = [_make_day_stats(_dt.date(2024, 6, 19), 1000, 50, 100, 30)]
+        text = format_weekly_stats(days, "EN")
+        assert "<b>" not in text
+
+    def test_weekly_bold_header(self) -> None:
+        days = [_make_day_stats(_dt.date(2024, 6, 19), 1000, 50, 100, 30)]
+        text = format_weekly_stats(days, "EN", bold_header_html=True)
+        first_line = text.split("\n")[0]
+        assert first_line.startswith("<b>") and first_line.endswith("</b>")
+
+    def test_weekly_bold_body_not_bold(self) -> None:
+        days = [_make_day_stats(_dt.date(2024, 6, 19), 1000, 50, 100, 30)]
+        text = format_weekly_stats(days, "EN", bold_header_html=True)
+        lines = text.split("\n")
+        for line in lines[1:]:
+            assert "<b>" not in line
+
+    def test_four_week_default_no_bold(self) -> None:
+        weeks = [_make_week_avg(_dt.date(2024, 6, 17), _dt.date(2024, 6, 23), 1500, 100, 180, 55)]
+        text = format_four_week_stats(weeks, "EN")
+        assert "<b>" not in text
+
+    def test_four_week_bold_header(self) -> None:
+        weeks = [_make_week_avg(_dt.date(2024, 6, 17), _dt.date(2024, 6, 23), 1500, 100, 180, 55)]
+        text = format_four_week_stats(weeks, "EN", bold_header_html=True)
+        first_line = text.split("\n")[0]
+        assert first_line.startswith("<b>") and first_line.endswith("</b>")
+
+    def test_four_week_bold_body_not_bold(self) -> None:
+        weeks = [_make_week_avg(_dt.date(2024, 6, 17), _dt.date(2024, 6, 23), 1500, 100, 180, 55)]
+        text = format_four_week_stats(weeks, "EN", bold_header_html=True)
+        lines = text.split("\n")
+        for line in lines[1:]:
+            assert "<b>" not in line

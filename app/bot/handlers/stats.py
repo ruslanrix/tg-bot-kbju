@@ -50,9 +50,9 @@ async def on_stats_today(callback: CallbackQuery, session: AsyncSession) -> None
     local_d = today_local(tz)
 
     stats = await today_stats(session, user.id, local_d)
-    text = format_today_stats(stats, lang)
+    text = format_today_stats(stats, lang, bold_header_html=True)
 
-    await callback.message.edit_text(text)  # type: ignore[union-attr]
+    await callback.message.edit_text(text, parse_mode="HTML")  # type: ignore[union-attr]
     await callback.answer()
 
 
@@ -68,9 +68,9 @@ async def on_stats_weekly(callback: CallbackQuery, session: AsyncSession) -> Non
 
     dates = last_7_days(local_d)
     stats = await weekly_stats(session, user.id, dates)
-    text = format_weekly_stats(stats, lang)
+    text = format_weekly_stats(stats, lang, bold_header_html=True)
 
-    await callback.message.edit_text(text)  # type: ignore[union-attr]
+    await callback.message.edit_text(text, parse_mode="HTML")  # type: ignore[union-attr]
     await callback.answer()
 
 
@@ -86,7 +86,7 @@ async def on_stats_4weeks(callback: CallbackQuery, session: AsyncSession) -> Non
 
     weeks = last_4_calendar_weeks(local_d)
     stats = await four_week_stats(session, user.id, weeks)
-    text = format_four_week_stats(stats, lang)
+    text = format_four_week_stats(stats, lang, bold_header_html=True)
 
-    await callback.message.edit_text(text)  # type: ignore[union-attr]
+    await callback.message.edit_text(text, parse_mode="HTML")  # type: ignore[union-attr]
     await callback.answer()
