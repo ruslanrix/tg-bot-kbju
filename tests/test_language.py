@@ -197,7 +197,7 @@ class TestOnLanguageSelected:
 
     @pytest.mark.asyncio
     async def test_no_standalone_emoji_after_selection(self) -> None:
-        """After selection, no standalone 👇 message is sent."""
+        """After selection, no standalone 👇 message is sent; keyboard is refreshed."""
         cb = _make_callback("lang:EN")
         mock_session = AsyncMock()
 
@@ -208,7 +208,11 @@ class TestOnLanguageSelected:
              patch.object(UserRepo, "update_language", return_value=mock_user):
             await on_language_selected(cb, session=mock_session)
 
-        cb.message.answer.assert_not_called()
+        # Keyboard refresh message is sent, but never a standalone 👇
+        cb.message.answer.assert_called_once()
+        answer_text = cb.message.answer.call_args.args[0]
+        assert "👇" not in answer_text
+        assert cb.message.answer.call_args.kwargs.get("reply_markup") is not None
 
 
 # ---------------------------------------------------------------------------
