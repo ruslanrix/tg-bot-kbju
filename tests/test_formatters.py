@@ -125,10 +125,16 @@ class TestIngredientFormat:
         text = format_meal_saved(_make_analysis(likely_ingredients=[ing]))
         assert "• soup (350g, 150kcal)" in text
 
-    def test_no_weight_no_volume_fallback_zero(self) -> None:
+    def test_no_weight_no_volume_omits_grams(self) -> None:
+        """When weight and volume are unknown, grams are omitted entirely."""
         ing = Ingredient(name="chicken", amount="100g", calories_kcal=165)
         text = format_meal_saved(_make_analysis(likely_ingredients=[ing]))
-        assert "• chicken (0g, 165kcal)" in text
+        assert "• chicken (165kcal)" in text
+        # Ingredient line must not contain fabricated "0g"
+        lines = text.split("\n")
+        ing_lines = [l for l in lines if l.startswith("•") and "chicken" in l]
+        for line in ing_lines:
+            assert "0g" not in line
 
     def test_rounding(self) -> None:
         ing = Ingredient(name="rice", amount="1 cup", calories_kcal=200, weight_g=180.7)
