@@ -167,6 +167,21 @@ STRINGS: dict[str, str] = {
     "precheck_photo_too_large": "The photo is too large. Please resend a clearer or smaller photo 📸",
 
     # ---------------------------------------------------------------------------
+    # Edit feedback UX (FEAT-04)
+    # ---------------------------------------------------------------------------
+    "edit_feedback_prompt": (
+        "💬 Tell me what looks wrong. The macros? The calorie count? The ingredients?"
+    ),
+    "edit_feedback_photo_warning": "Please send text feedback, not a photo.",
+    "edit_feedback_timeout": "⏱️ Timed out",
+    "edit_feedback_updated": "✅ Updated",
+    "edit_feedback_replaced": "↩️ Cancelled (new edit started)",
+    "edit_feedback_ok": "✅ OK",
+    "edit_feedback_deleted": "🗑️ Deleted",
+    "kb_edit_ok": "✅ It looks OK",
+    "kb_edit_delete": "🛑 Delete it",
+
+    # ---------------------------------------------------------------------------
     # Navigation
     # ---------------------------------------------------------------------------
     "nav_arrow": "👇",

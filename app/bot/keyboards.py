@@ -205,6 +205,27 @@ def help_change_tz_keyboard(lang: str = "EN") -> InlineKeyboardMarkup:
 
 
 # ---------------------------------------------------------------------------
+# Edit feedback prompt (FEAT-04)
+# ---------------------------------------------------------------------------
+
+
+def edit_feedback_keyboard(meal_id: str, lang: str = "EN") -> InlineKeyboardMarkup:
+    """Inline keyboard for edit feedback prompt: OK / Delete."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=t("kb_edit_ok", lang), callback_data=f"edit_ok:{meal_id}"
+                ),
+                InlineKeyboardButton(
+                    text=t("kb_edit_delete", lang), callback_data=f"edit_delete:{meal_id}"
+                ),
+            ],
+        ],
+    )
+
+
+# ---------------------------------------------------------------------------
 # Language selection (FEAT-13)
 # ---------------------------------------------------------------------------
 
